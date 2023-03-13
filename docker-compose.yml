@@ -1,0 +1,37 @@
+version: '3'
+
+
+services:
+  TestROS_container:
+    container_name: TestROS_container
+    #image: ghcr.io/reconcycle/reconcycle-visualization:kinetic-v5
+    image: test_ros:devel
+    
+    volumes:
+      - /home/reconcycle/gsavle/TEST/files:/nn_pipeline/AlphaPose/input
+      - /home/reconcycle/gsavle/TEST/test_weights:/nn_pipeline/AlphaPose/detector/yolo/data
+      - /home/reconcycle/gsavle/TEST/test_model:/nn_pipeline/AlphaPose/detector/tracker/data
+      - /home/reconcycle/gsavle/TEST/pret_model:/nn_pipeline/AlphaPose/pretrained_models
+      - /home/reconcycle/gsavle/TEST/output:/nn_pipeline/AlphaPose/output
+      - /tmp/.X11-unix:/tmp/.X11-unix #for using local xserver
+      #- /home/reconcycle/reconcycle/reconcycle_visualization:/ros_ws/src/reconcycle_visualization
+      #- /home/reconcycle/reconcycle/apptainer/viz_ws/src/qb_vsa_gripper:/ros_ws/src/qb_vsa_gripper
+    #command: stdbuf -o L roslaunch --wait reconcycle_description display_real_qundis.launch
+    #command: rviz
+    command: tail -f /dev/null
+    ## command: bash
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      - "ROS_MASTER_URI=http://10.20.0.1:11311"
+      - "ROS_IP=10.20.0.2"
+      #- "GUI_WEB_PORT=9093" 
+      ##- "DISPLAY=:2.0"
+      - "DISPLAY=$DISPLAY"
+    network_mode: "host"
+    tty: true
+
+
+
+
+  
