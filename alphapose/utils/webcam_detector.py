@@ -38,7 +38,7 @@ import rospy
 from std_msgs.msg import String, Float32, Int16, Bool
 from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
-from cv_bridge import CvBridge
+from cv_bridge import CvBridg
 
 
 class WebCamDetectionLoader():
@@ -107,7 +107,7 @@ class WebCamDetectionLoader():
         ########################################################$
 
         # Inicializacija nodea
-        rospy.init_node("/vision", anonymous = True)
+        rospy.init_node("vision", anonymous = True)
 
         # Definicija odjemalca
         self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg())
