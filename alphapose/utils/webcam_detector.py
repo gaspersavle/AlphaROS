@@ -110,7 +110,7 @@ class WebCamDetectionLoader():
         rospy.init_node("vision", anonymous = True)
 
         # Definicija odjemalca
-        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg())
+        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
 
         # Definicija publisherja
         self.poser = rospy.Publisher("/realsense/color/image_pose", Image, queue_size = queueSize)
