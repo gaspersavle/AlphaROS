@@ -176,7 +176,7 @@ if __name__ == "__main__":
 
     # Load detection loader
     if mode == 'webcam':
-        det_loader = WebCamDetectionLoader(input_source, get_detector(args), cfg, args)
+        det_loader = WebCamDetectionLoader(get_detector(args), cfg, args)
         #det_loader = ROSCamDetectionLoader(input_source, get_detector(args), cfg, args)
         det_worker = det_loader.start()
 
