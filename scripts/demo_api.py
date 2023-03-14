@@ -387,7 +387,7 @@ class SingleImageAlphaPose():
 
 def example():
     outputpath = "examples/res/"
-    if not os.path.exists(outputpath + '/vis'):
+    if not os.path.exists(outputpath + 'vis'):
         os.mkdir(outputpath + '/vis')
 
     demo = SingleImageAlphaPose(args, cfg)
