@@ -24,7 +24,7 @@ from alphapose.utils.file_detector import FileDetectionLoader
 from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
-from alphapose.utils.ROScam_detector import ROSCamDetectionLoader
+#from alphapose.utils.ROScam_detector import ROSCamDetectionLoader
 from alphapose.utils.writer import DataWriter
 
 from transformers import (
