@@ -27,14 +27,6 @@ from alphapose.utils.webcam_detector import WebCamDetectionLoader
 #from alphapose.utils.ROScam_detector import ROSCamDetectionLoader
 from alphapose.utils.writer import DataWriter
 
-from transformers import (
-    Blip2Processor,
-    Blip2VisionConfig,
-    Blip2QFormerConfig,
-    OPTConfig,
-    Blip2Config,
-    Blip2ForConditionalGeneration,
-)
 import time
 import rospy
 from std_msgs.msg import String, Float32, Int16, Bool
