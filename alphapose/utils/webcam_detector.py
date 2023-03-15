@@ -2,17 +2,6 @@ from itertools import count
 from threading import Thread
 from queue import Queue
 
-
-from tqdm import tqdm
-import natsort
-from PIL import Image as PilImage
-import requests
-import io
-import os
-import platform
-import sys
-import time
-
 import cv2
 import numpy as np
 
@@ -20,13 +9,6 @@ import torch
 import torch.multiprocessing as mp
 
 from alphapose.utils.presets import SimpleTransform, SimpleTransform3DSMPL
-
-import time
-import rospy
-from std_msgs.msg import String, Float32, Int16, Bool
-from sensor_msgs.msg import Image
-from std_srvs.srv import Trigger
-from cv_bridge import CvBridge
 
 
 class WebCamDetectionLoader():
@@ -79,19 +61,15 @@ class WebCamDetectionLoader():
                 loss_type=cfg.LOSS['TYPE'])
 
         # initialize the queue used to store data
-        #pose_queue: the buffer storing post-processed cropped human image for pose estimation
+        """
+        pose_queue: the buffer storing post-processed cropped human image for pose estimation
+        """
         if opt.sp:
             self._stopped = False
             self.pose_queue = Queue(maxsize=queueSize)
         else:
             self._stopped = mp.Value('b', False)
             self.pose_queue = mp.Queue(maxsize=queueSize)
-    
-    def transimg(self, input: Image) -> Image:
-        image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-        pil_image = PilImage.fromarray(image)
-        pil_image.save("slika.jpg")
-        self.receivedImg = pil_image
 
     def start_worker(self, target):
         if self.opt.sp:
