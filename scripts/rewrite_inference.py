@@ -1,4 +1,5 @@
 """Script for single-gpu/multi-gpu demo."""
+
 import argparse
 import os
 import platform
@@ -22,6 +23,7 @@ from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.writer import DataWriter
+
 
 """----------------------------- Demo options -----------------------------"""
 parser = argparse.ArgumentParser(description='AlphaPose Demo')
@@ -106,6 +108,8 @@ parser.add_argument('--pose_flow', dest='pose_flow',
 parser.add_argument('--pose_track', dest='pose_track',
                     help='track humans in video with reid', action='store_true', default=False)
 
+###################################################################################################
+
 args = parser.parse_args()
 cfg = update_config(args.cfg)
 
@@ -153,10 +157,12 @@ def check_input():
 
         if len(inputlist):
             im_names = open(inputlist, 'r').readlines()
+
         elif len(inputpath) and inputpath != '/':
             for root, dirs, files in os.walk(inputpath):
                 im_names = files
             im_names = natsort.natsorted(im_names)
+
         elif len(inputimg):
             args.inputpath = os.path.split(inputimg)[0]
             im_names = [os.path.split(inputimg)[1]]
@@ -316,4 +322,3 @@ if __name__ == "__main__":
             writer.terminate()
             writer.clear_queues()
             det_loader.clear_queues()
-
