@@ -9,9 +9,6 @@ import numpy as np
 import torch
 from tqdm import tqdm
 import natsort
-from PIL import Image as PilImage
-import requests
-import io
 
 from detector.apis import get_detector
 from trackers.tracker_api import Tracker
@@ -24,22 +21,15 @@ from alphapose.utils.file_detector import FileDetectionLoader
 from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
-from alphapose.utils.ROScam_detector import ROSCamDetectionLoader
 from alphapose.utils.writer import DataWriter
-
-import time
-import rospy
-from std_msgs.msg import String, Float32, Int16, Bool
-from sensor_msgs.msg import Image
-from std_srvs.srv import Trigger
-from cv_bridge import CvBridge
 
 """----------------------------- Demo options -----------------------------"""
 parser = argparse.ArgumentParser(description='AlphaPose Demo')
-parser.add_argument('--cfg', type=str, required=False,
+
+parser.add_argument('--cfg', type=str, required = False,
                     help='experiment configure file name', default = 'configs/coco/resnet/256x192_res50_lr1e-3_1x.yaml')
 
-parser.add_argument('--checkpoint', type=str, required=False,
+parser.add_argument('--checkpoint', type=str, required = False,
                     help='checkpoint file name', default = 'pretrained_models/fast_res50_256x192.pth')
 
 parser.add_argument('--sp', default=False, action='store_true',
@@ -74,17 +64,16 @@ parser.add_argument('--showbox', default=False, action='store_true',
 
 parser.add_argument('--profile', default=False, action='store_true',
                     help='add speed profiling at screen output')
-
 parser.add_argument('--format', type=str,
-                    help='save in the format of cmu or coco or openpose, option: coco/cmu/open', default = 'open')
+                    help='save in the format of cmu or coco or openpose, option: coco/cmu/open')
 
 parser.add_argument('--min_box_area', type=int, default=0,
                     help='min box area to filter out')
 
-parser.add_argument('--detbatch', type=int, default=1,
+parser.add_argument('--detbatch', type=int, default=5,
                     help='detection batch size PER GPU')
 
-parser.add_argument('--posebatch', type=int, default=1,
+parser.add_argument('--posebatch', type=int, default=64,
                     help='pose estimation maximum batch size PER GPU')
 
 parser.add_argument('--eval', dest='eval', default=False, action='store_true',
@@ -107,17 +96,13 @@ parser.add_argument('--video', dest='video',
                     help='video-name', default="")
 parser.add_argument('--webcam', dest='webcam', type=int,
                     help='webcam number', default=-1)
-
 parser.add_argument('--save_video', dest='save_video',
                     help='whether to save rendered video', default=False, action='store_true')
-
 parser.add_argument('--vis_fast', dest='vis_fast',
                     help='use fast rendering', action='store_true', default=False)
-
 """----------------------------- Tracking options -----------------------------"""
 parser.add_argument('--pose_flow', dest='pose_flow',
                     help='track humans in video with PoseFlow', action='store_true', default=False)
-
 parser.add_argument('--pose_track', dest='pose_track',
                     help='track humans in video with reid', action='store_true', default=False)
 
@@ -143,8 +128,44 @@ def check_input():
     if args.webcam != -1:
         args.detbatch = 1
         return 'webcam', int(args.webcam)
+
+    # for video
+    if len(args.video):
+        if os.path.isfile(args.video):
+            videofile = args.video
+            return 'video', videofile
+        else:
+            raise IOError('Error: --video must refer to a video file, not directory.')
+
+    # for detection results
+    if len(args.detfile):
+        if os.path.isfile(args.detfile):
+            detfile = args.detfile
+            return 'detfile', detfile
+        else:
+            raise IOError('Error: --detfile must refer to a detection json file, not directory.')
+
+    # for images
+    if len(args.inputpath) or len(args.inputlist) or len(args.inputimg):
+        inputpath = args.inputpath
+        inputlist = args.inputlist
+        inputimg = args.inputimg
+
+        if len(inputlist):
+            im_names = open(inputlist, 'r').readlines()
+        elif len(inputpath) and inputpath != '/':
+            for root, dirs, files in os.walk(inputpath):
+                im_names = files
+            im_names = natsort.natsorted(im_names)
+        elif len(inputimg):
+            args.inputpath = os.path.split(inputimg)[0]
+            im_names = [os.path.split(inputimg)[1]]
+
+        return 'image', im_names
+
     else:
         raise NotImplementedError
+
 
 def print_finish_info():
     print('===========================> Finish Model Running.')
@@ -169,7 +190,12 @@ if __name__ == "__main__":
     # Load detection loader
     if mode == 'webcam':
         det_loader = WebCamDetectionLoader(input_source, get_detector(args), cfg, args)
-        #det_loader = ROSCamDetectionLoader(input_source, get_detector(args), cfg, args)
+        det_worker = det_loader.start()
+    elif mode == 'detfile':
+        det_loader = FileDetectionLoader(input_source, cfg, args)
+        det_worker = det_loader.start()
+    else:
+        det_loader = DetectionLoader(input_source, get_detector(args), cfg, args, batchSize=args.detbatch, mode=mode, queueSize=args.qsize)
         det_worker = det_loader.start()
 
     # Load pose model
