@@ -1,15 +1,3 @@
-""" from itertools import count
-from threading import Thread
-from queue import Queue
-
-import cv2
-import numpy as np
-
-import torch
-import torch.multiprocessing as mp
-
-from alphapose.utils.presets import SimpleTransform, SimpleTransform3DSMPL """
-
 from itertools import count
 from threading import Thread
 from queue import Queue
@@ -42,7 +30,7 @@ from cv_bridge import CvBridge
 
 
 class WebCamDetectionLoader():
-    """ def __init__(self, input_source, detector, cfg, opt, queueSize=1):
+    def __init__(self, input_source, detector, cfg, opt, queueSize=1):
         self.cfg = cfg
         self.opt = opt
 
@@ -91,87 +79,14 @@ class WebCamDetectionLoader():
                 loss_type=cfg.LOSS['TYPE'])
 
         # initialize the queue used to store data
-        pose_queue: the buffer storing post-processed cropped human image for pose estimation
-        if opt.sp:
-            self._stopped = False
-            self.pose_queue = Queue(maxsize=queueSize)
-        else:
-            self._stopped = mp.Value('b', False)
-            self.pose_queue = mp.Queue(maxsize=queueSize)"""
-    def __init__(self, detector, cfg, opt, queueSize=1):
-        self.cfg = cfg
-        self.opt = opt
-
-        #########################################################
-        ## Begin: Rospy
-        ########################################################$
-
-        # Inicializacija nodea
-        rospy.init_node("vision", anonymous = True)
-
-        # Definicija odjemalca
-        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
-
-        # Definicija publisherja
-        self.poser = rospy.Publisher("/realsense/color/image_pose", Image, queue_size = queueSize)
-
-
-        """stream = cv2.VideoCapture(int(input_source))
-        assert stream.isOpened(), 'Cannot capture source'
-        self.path = input_source
-        self.fourcc = int(stream.get(cv2.CAP_PROP_FOURCC))
-        self.fps = stream.get(cv2.CAP_PROP_FPS)
-        self.frameSize = (int(stream.get(cv2.CAP_PROP_FRAME_WIDTH)), int(stream.get(cv2.CAP_PROP_FRAME_HEIGHT)))
-        self.videoinfo = {'fourcc': self.fourcc, 'fps': self.fps, 'frameSize': self.frameSize}
-        stream.release() """
-
-        self.detector = detector
-
-        self._input_size = cfg.DATA_PRESET.IMAGE_SIZE
-        self._output_size = cfg.DATA_PRESET.HEATMAP_SIZE
-
-        self._sigma = cfg.DATA_PRESET.SIGMA
-
-        if cfg.DATA_PRESET.TYPE == 'simple':
-            self.transformation = SimpleTransform(
-                self, scale_factor=0,
-                input_size=self._input_size,
-                output_size=self._output_size,
-                rot=0, sigma=self._sigma,
-                train=False, add_dpg=False)
-        elif cfg.DATA_PRESET.TYPE == 'simple_smpl':
-            # TODO: new features
-            from easydict import EasyDict as edict
-            dummpy_set = edict({
-                'joint_pairs_17': None,
-                'joint_pairs_24': None,
-                'joint_pairs_29': None,
-                'bbox_3d_shape': (2.2, 2.2, 2.2)
-            })
-            self.transformation = SimpleTransform3DSMPL(
-                dummpy_set, scale_factor=cfg.DATASET.SCALE_FACTOR,
-                color_factor=cfg.DATASET.COLOR_FACTOR,
-                occlusion=cfg.DATASET.OCCLUSION,
-                input_size=cfg.MODEL.IMAGE_SIZE,
-                output_size=cfg.MODEL.HEATMAP_SIZE,
-                depth_dim=cfg.MODEL.EXTRA.DEPTH_DIM,
-                bbox_3d_shape=(2.2, 2,2, 2.2),
-                rot=cfg.DATASET.ROT_FACTOR, sigma=cfg.MODEL.EXTRA.SIGMA,
-                train=False, add_dpg=False, gpu_device=self.device,
-                loss_type=cfg.LOSS['TYPE'])
-
-        # initialize the queue used to store data
-        """
-        pose_queue: the buffer storing post-processed cropped human image for pose estimation
-        """
+        #pose_queue: the buffer storing post-processed cropped human image for pose estimation
         if opt.sp:
             self._stopped = False
             self.pose_queue = Queue(maxsize=queueSize)
         else:
             self._stopped = mp.Value('b', False)
             self.pose_queue = mp.Queue(maxsize=queueSize)
-
-
+    
     def transimg(self, input: Image) -> Image:
         image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
         pil_image = PilImage.fromarray(image)
