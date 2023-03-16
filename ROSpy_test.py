@@ -3,11 +3,11 @@ from cv_bridge import CvBridge
 import time
 import rospy
 from std_msgs.msg import String, Float32, Int16, Bool
-from sensor_msgs.msg import Image, Imagefilter
+from sensor_msgs.msg import Image
 from std_srvs.srv import Trigger
 from cv_bridge import CvBridge   
 
-from PIL import Image
+from PIL import Image, ImageFilter
         
 
 class TestCamROSpy():
@@ -27,10 +27,10 @@ class TestCamROSpy():
         image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
         pil_image = Image.fromarray(image)
         pil_image.save("slika.jpg")
-        self.receivedImg = pil_image
-        self.editedImg = self.receivedImg.filter(Imagefilter.BLUR)
+        receivedImg = pil_image
+        editedImg = receivedImg.filter(ImageFilter.BLUR)
         
-        self.poser.publish(self.editedImg)
+        self.poser.publish(editedImg)
 
     
 
