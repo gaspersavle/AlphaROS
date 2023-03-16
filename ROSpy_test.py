@@ -25,14 +25,13 @@ class TestCamROSpy():
 
     def transimg(self, input: Image) -> Image:
         print(input)
-        image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+        self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
+        self.image = cv2.rotate(self.image, cv2.ROTATE_90_CLOCKWISE)
 
-        ros_edited_img = CvBridge().cv2_to_imgmsg(image, encoding = 'rgb8')
+        self.ros_edited_img = CvBridge().cv2_to_imgmsg(self.image, encoding = 'rgb8')
 
-        input.data = ros_edited_img
-        self.poser.publish(input)
+        self.poser.publish(self.ros_edited_img)
 
     
 
