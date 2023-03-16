@@ -20,7 +20,7 @@ class TestCamROSpy():
         self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
 
         # Definicija publisherja
-        self.poser = rospy.Publishe
+        self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
 
 
     def transimg(self, input: Image) -> Image:
