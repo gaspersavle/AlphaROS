@@ -20,22 +20,18 @@ class TestCamROSpy():
         self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
 
         # Definicija publisherja
-        self.poser = rospy.Publisher("/alphapose", Image, queue_size = 1)
+        self.poser = rospy.Publishe
 
-        rospy.spin()
 
     def transimg(self, input: Image) -> Image:
         print(input)
         image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-        pil_image = PILimage.fromarray(image)
-        pil_image.save("slika.jpg")
-        receivedImg = pil_image
-        editedImg = receivedImg.filter(ImageFilter.BLUR)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        image = cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
 
-        ros_edited_img = CvBridge().cv2_to_imgmsg(editedImg, encoding = 'rgb8')
+        ros_edited_img = CvBridge().cv2_to_imgmsg(image, encoding = 'rgb8')
 
         input.data = ros_edited_img
-        
         self.poser.publish(input)
 
     
