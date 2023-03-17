@@ -38,18 +38,13 @@ class ROSCamDetectionLoader():
 
         #########################################################
         ## Begin: Rospy
-        ########################################################$
+        #########################################################
 
-        # Inicializacija nodea
         rospy.init_node("vision", anonymous = True)
+        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.TransRead)
+        rospy.spin()
 
-        # Definicija odjemalca
-        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
-
-        # Definicija publisherja
-        self.poser = rospy.Publisher("/realsense/color/image_pose", Image, queue_size = queueSize)
-
-
+        #########################################################
         """stream = cv2.VideoCapture(int(input_source))
         assert stream.isOpened(), 'Cannot capture source'
         self.path = input_source
@@ -106,11 +101,12 @@ class ROSCamDetectionLoader():
             self.pose_queue = mp.Queue(maxsize=queueSize)
 
 
-    def transimg(self, input: Image) -> Image:
-        image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-        pil_image = PilImage.fromarray(image)
-        pil_image.save("slika.jpg")
-        self.receivedImg = pil_image
+    def TransRead(self, input: Image):
+        #print(input)
+        self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        self.image = cv2.resize(self.image, [256, 192])
+        #self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
+        
 
     def start_worker(self, target):
         if self.opt.sp:
@@ -160,7 +156,7 @@ class ROSCamDetectionLoader():
                 return
             if not self.pose_queue.full():
                 # otherwise, ensure the queue has room in it
-                (grabbed, frame) = (1, self.receivedImg)
+                (grabbed, frame) = (1, self.image)
                 # if the `grabbed` boolean is `False`, then we have
                 # reached the end of the video file
                 if not grabbed:

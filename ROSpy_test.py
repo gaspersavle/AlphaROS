@@ -22,6 +22,8 @@ class TestCamROSpy():
         # Definicija publisherja
         self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
 
+        rospy.spin()
+
 
     def transimg(self, input: Image) -> Image:
         print(input)

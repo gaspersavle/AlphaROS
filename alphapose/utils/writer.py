@@ -11,6 +11,13 @@ import torch.multiprocessing as mp
 from alphapose.utils.transforms import get_func_heatmap_to_coord
 from alphapose.utils.pPose_nms import pose_nms, write_json
 
+# ROSpy includes
+import rospy
+from std_msgs.msg import String, Float32, Int16, Bool
+from sensor_msgs.msg import Image
+from std_srvs.srv import Trigger
+from cv_bridge import CvBridge  
+
 DEFAULT_VIDEO_SAVE_OPT = {
     'savepath': 'examples/res/1.mp4',
     'fourcc': cv2.VideoWriter_fourcc(*'mp4v'),
@@ -32,6 +39,15 @@ class DataWriter():
         self.eval_joints = EVAL_JOINTS
         self.save_video = save_video
         self.heatmap_to_coord = get_func_heatmap_to_coord(cfg)
+        ######################################################
+        ## INIT: ROSpy
+        ######################################################
+
+        rospy.init_node("vision", anonymous = True)
+        self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
+        rospy.spin()
+
+        ######################################################
         # initialize the queue used to store frames read from
         # the video file
         if opt.sp:
