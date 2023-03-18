@@ -42,7 +42,8 @@ class DataWriter():
         ######################################################
         ## INIT: ROSpy
         ######################################################
-
+        #bullshit line so i can correct the commit
+        
         rospy.init_node("vision", anonymous = True)
         self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
         rospy.spin()
@@ -78,6 +79,11 @@ class DataWriter():
                 self.vis_thres = [0.4] * (num_joints - hand_face_num) + [0.05] * hand_face_num
 
         self.use_heatmap_loss = (self.cfg.DATA_PRESET.get('LOSS_TYPE', 'MSELoss') == 'MSELoss')
+    
+    def TransPub(self, input: np.ndarray):
+        #print(input)
+        self.imgout = CvBridge().cv2_to_imgmsg(input, encoding = 'rgb8')
+        self.poser.publish(self.imgout)
 
     def start_worker(self, target):
         if self.opt.sp:
@@ -196,6 +202,10 @@ class DataWriter():
                     self.write_image(img, im_name, stream=stream if self.save_video else None)
 
     def write_image(self, img, im_name, stream=None):
+
+        # ROSpy publish image
+        self.TransPub(img)
+
         if self.opt.vis:
             cv2.imshow("AlphaPose Demo", img)
             cv2.waitKey(30)
