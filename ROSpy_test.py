@@ -30,8 +30,7 @@ class TestCamROSpy():
         self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
         self.image = cv2.cvtColor(self.image, cv2.COLOR_RGB2GRAY)
         self.image = cv2.rotate(self.image, cv2.ROTATE_90_CLOCKWISE)
-
-        self.ros_edited_img = CvBridge().cv2_to_imgmsg(self.image, encoding = 'rgb8')
+        self.ros_edited_img = CvBridge().cv2_to_imgmsg(self.image, encoding = 'mono8')
 
         self.poser.publish(self.ros_edited_img)
 

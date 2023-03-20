@@ -23,7 +23,11 @@ from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.ROScam_detector import ROSCamDetectionLoader
+<<<<<<< HEAD
 from alphapose.utils.writer import DataWriter
+=======
+from alphapose.utils.alpha_writer import DataWriter
+>>>>>>> f4d9d45d63847f2e46ca519a98b65158d5c45e2b
 
 
 """----------------------------- Demo options -----------------------------"""
@@ -229,7 +233,11 @@ if __name__ == "__main__":
     # Init data writer
     queueSize = 2 if mode == 'webcam' else args.qsize
     if args.save_video and mode != 'image':
+<<<<<<< HEAD
         from alphapose.utils.writer import DEFAULT_VIDEO_SAVE_OPT as video_save_opt
+=======
+        from nn_pipeline.AlphaROS.alphapose.utils.rewriter import DEFAULT_VIDEO_SAVE_OPT as video_save_opt
+>>>>>>> f4d9d45d63847f2e46ca519a98b65158d5c45e2b
         if mode == 'video':
             video_save_opt['savepath'] = os.path.join(args.outputpath, 'AlphaPose_' + os.path.basename(input_source))
         else:
