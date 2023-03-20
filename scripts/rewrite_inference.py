@@ -23,7 +23,7 @@ from alphapose.utils.transforms import flip, flip_heatmap
 from alphapose.utils.vis import getTime
 from alphapose.utils.webcam_detector import WebCamDetectionLoader
 from alphapose.utils.ROScam_detector import ROSCamDetectionLoader
-from nn_pipeline.AlphaROS.alphapose.utils.rewriter import DataWriter
+from alphapose.utils.alpha_writer import DataWriter
 
 
 """----------------------------- Demo options -----------------------------"""
@@ -196,8 +196,8 @@ if __name__ == "__main__":
 
     # Load detection loader
     if mode == 'webcam':
-        det_loader = WebCamDetectionLoader(input_source, get_detector(args), cfg, args)
-        #det_loader = ROSCamDetectionLoader(get_detector(args), cfg, args)
+        #det_loader = WebCamDetectionLoader(input_source, get_detector(args), cfg, args)
+        det_loader = ROSCamDetectionLoader(get_detector(args), cfg, args)
         det_worker = det_loader.start()
     elif mode == 'detfile':
         det_loader = FileDetectionLoader(input_source, cfg, args)
