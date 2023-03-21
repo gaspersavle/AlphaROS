@@ -13,9 +13,7 @@ from alphapose.utils.pPose_nms import pose_nms, write_json
 
 # ROSpy includes
 import rospy
-from std_msgs.msg import String, Float32, Int16, Bool
 from sensor_msgs.msg import Image
-from std_srvs.srv import Trigger
 from cv_bridge import CvBridge  
 
 DEFAULT_VIDEO_SAVE_OPT = {

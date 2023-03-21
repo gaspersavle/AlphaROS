@@ -113,7 +113,7 @@ class ROSCamDetectionLoader():
             p = Thread(target=target, args=())
         else:
             p = mp.Process(target=target, args=())
-        p.daemon = True
+        #p.daemon = True
         p.start()
         return p
 

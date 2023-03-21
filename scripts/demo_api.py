@@ -15,6 +15,12 @@ import time
 import cv2
 import numpy as np
 
+##################################################################
+import rospy
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge   
+##################################################################
+
 from alphapose.utils.transforms import get_func_heatmap_to_coord
 from alphapose.utils.pPose_nms import pose_nms
 from alphapose.utils.presets import SimpleTransform, SimpleTransform3DSMPL
@@ -295,7 +301,14 @@ class SingleImageAlphaPose():
         self.args = args
         self.cfg = cfg
 
-        # Load pose model
+        ####################################################################################
+        #init rospy
+        rospy.init_node("vision", anonymous = True)
+        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
+        self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
+        ####################################################################################
+
+
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
         print(f'Loading pose model from {args.checkpoint}...')
@@ -306,6 +319,10 @@ class SingleImageAlphaPose():
         self.pose_model.eval()
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
+
+    def rospy_interface(self, input):
+        self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        self.image = cv2.resize(self.image, [256, 192])
 
     def process(self, im_name, image):
         # Init data writer
@@ -392,11 +409,17 @@ def example():
 
     demo = SingleImageAlphaPose(args, cfg)
     im_name = args.inputimg    # the path to the target image
-    image = cv2.cvtColor(cv2.imread(im_name), cv2.COLOR_BGR2RGB)
-    pose = demo.process(im_name, image)
+
+    ############################################################
+    #image = cv2.cvtColor(cv2.imread(im_name), cv2.COLOR_BGR2RGB)
+    
+    pose = demo.process(im_name, SingleImageAlphaPose.image)
     img = demo.getImg()     # or you can just use: img = cv2.imread(image)
     img = demo.vis(img, pose)   # visulize the pose result
-    cv2.imwrite(os.path.join(outputpath, 'vis', os.path.basename(im_name)), img)
+    
+    # cv2.imwrite(os.path.join(outputpath, 'vis', os.path.basename(im_name)), img)
+    out = CvBridge().cv2_to_imgmsg(img, encoding = 'rgb8')
+    SingleImageAlphaPose.poser.publish(out)
     
     # if you want to vis the img:
     # cv2.imshow("AlphaPose Demo", img)
