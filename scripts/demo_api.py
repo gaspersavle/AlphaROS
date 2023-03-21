@@ -301,13 +301,6 @@ class SingleImageAlphaPose():
         self.args = args
         self.cfg = cfg
         self.image = None
-        ####################################################################################
-        #init rospy
-        rospy.init_node("vision", anonymous = True)
-        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.rospy_interface)
-        self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
-        ####################################################################################
-
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
@@ -320,9 +313,25 @@ class SingleImageAlphaPose():
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
 
+        ####################################################################################
+        #init rospy
+        rospy.init_node("vision", anonymous = True)
+        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.rospy_interface)
+        self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
+        rospy.spin()
+        ####################################################################################
+
     def rospy_interface(self, input):
         self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+
+        self.pose = self.process("demo", self.image)
+        self.image = self.getImg()     # or you can just use: img = cv2.imread(image)
+        self.image = self.vis(self.image, self.pose)
+
         self.image = cv2.resize(self.image, [256, 192])
+
+        self.out = CvBridge().cv2_to_imgmsg(self.image, encoding = 'rgb8')
+        self.poser.publish(self.out)
 
     def process(self, im_name, image=None):
         # Init data writer
@@ -379,13 +388,11 @@ class SingleImageAlphaPose():
                     'det time: {dt:.4f} | pose time: {pt:.4f} | post processing: {pn:.4f}'.format(
                         dt=np.mean(runtime_profile['dt']), pt=np.mean(runtime_profile['pt']), pn=np.mean(runtime_profile['pn']))
                 )
-            print('===========================> Finish Model Running.')
         except Exception as e:
             print(repr(e))
             print('An error as above occurs when processing the images, please check it')
             pass
-        except KeyboardInterrupt:
-            print('===========================> Finish Model Running.')
+
 
         return pose
 
@@ -402,33 +409,6 @@ class SingleImageAlphaPose():
         write_json(final_result, outputpath, form=form, for_eval=for_eval)
         print("Results have been written to json.")
 
-def example():
-    outputpath = "examples/res/"
-    if not os.path.exists(outputpath + 'vis'):
-        os.mkdir(outputpath + 'vis')
-
-    demo = SingleImageAlphaPose(args, cfg)
-    im_name = args.inputimg    # the path to the target image
-
-    ############################################################
-    #image = cv2.cvtColor(cv2.imread(im_name), cv2.COLOR_BGR2RGB)
-    
-    pose = demo.process(im_name)
-    img = demo.getImg()     # or you can just use: img = cv2.imread(image)
-    img = demo.vis(img, pose)   # visulize the pose result
-    
-    # cv2.imwrite(os.path.join(outputpath, 'vis', os.path.basename(im_name)), img)
-    out = CvBridge().cv2_to_imgmsg(img, encoding = 'rgb8')
-    SingleImageAlphaPose.poser.publish(out)
-    
-    # if you want to vis the img:
-    # cv2.imshow("AlphaPose Demo", img)
-    # cv2.waitKey(30)
-
-    # write the result to json:
-    result = [pose]
-    demo.writeJson(result, outputpath, form=args.format, for_eval=args.eval)
 
 if __name__ == "__main__":
-    example()
-SingleImageAlphaPose
+    SingleImageAlphaPose(args, cfg)
