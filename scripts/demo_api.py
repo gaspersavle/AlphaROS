@@ -300,11 +300,11 @@ class SingleImageAlphaPose():
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
-
+        self.image = None
         ####################################################################################
         #init rospy
         rospy.init_node("vision", anonymous = True)
-        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.transimg)
+        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.rospy_interface)
         self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
         ####################################################################################
 
@@ -324,7 +324,7 @@ class SingleImageAlphaPose():
         self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
         self.image = cv2.resize(self.image, [256, 192])
 
-    def process(self, im_name, image):
+    def process(self, im_name, image=None):
         # Init data writer
         self.writer = DataWriter(self.cfg, self.args)
 
@@ -337,7 +337,7 @@ class SingleImageAlphaPose():
         try:
             start_time = getTime()
             with torch.no_grad():
-                (inps, orig_img, im_name, boxes, scores, ids, cropped_boxes) = self.det_loader.process(im_name, image).read()
+                (inps, orig_img, im_name, boxes, scores, ids, cropped_boxes) = self.det_loader.process(im_name, self.image).read()
                 if orig_img is None:
                     raise Exception("no image is given")
                 if boxes is None or boxes.nelement() == 0:
@@ -404,8 +404,8 @@ class SingleImageAlphaPose():
 
 def example():
     outputpath = "examples/res/"
-    if not os.path.exists(outputpath + '/vis'):
-        os.mkdir(outputpath + '/vis')
+    if not os.path.exists(outputpath + 'vis'):
+        os.mkdir(outputpath + 'vis')
 
     demo = SingleImageAlphaPose(args, cfg)
     im_name = args.inputimg    # the path to the target image
@@ -413,7 +413,7 @@ def example():
     ############################################################
     #image = cv2.cvtColor(cv2.imread(im_name), cv2.COLOR_BGR2RGB)
     
-    pose = demo.process(im_name, SingleImageAlphaPose.image)
+    pose = demo.process(im_name)
     img = demo.getImg()     # or you can just use: img = cv2.imread(image)
     img = demo.vis(img, pose)   # visulize the pose result
     
@@ -431,3 +431,4 @@ def example():
 
 if __name__ == "__main__":
     example()
+SingleImageAlphaPose
