@@ -196,8 +196,8 @@ if __name__ == "__main__":
 
     # Load detection loader
     if mode == 'webcam':
-        #det_loader = WebCamDetectionLoader(input_source, get_detector(args), cfg, args)
-        det_loader = ROSCamDetectionLoader(get_detector(args), cfg, args)
+        det_loader = WebCamDetectionLoader(input_source, get_detector(args), cfg, args)
+        #det_loader = ROSCamDetectionLoader(get_detector(args), cfg, args)
         det_worker = det_loader.start()
     elif mode == 'detfile':
         det_loader = FileDetectionLoader(input_source, cfg, args)
@@ -229,7 +229,7 @@ if __name__ == "__main__":
     # Init data writer
     queueSize = 2 if mode == 'webcam' else args.qsize
     if args.save_video and mode != 'image':
-        from nn_pipeline.AlphaROS.alphapose.utils.rewriter import DEFAULT_VIDEO_SAVE_OPT as video_save_opt
+        from alphapose.utils.writer import DEFAULT_VIDEO_SAVE_OPT as video_save_opt
         if mode == 'video':
             video_save_opt['savepath'] = os.path.join(args.outputpath, 'AlphaPose_' + os.path.basename(input_source))
         else:
