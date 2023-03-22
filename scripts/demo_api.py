@@ -317,6 +317,7 @@ class SingleImageAlphaPose():
         #init rospy
         rospy.init_node("vision", anonymous = True)
         self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.rospy_interface)
+        self.depth = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, )
         self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
         rospy.spin()
         ####################################################################################
