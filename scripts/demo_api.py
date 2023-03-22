@@ -19,6 +19,8 @@ import numpy as np
 import rospy
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge   
+import colorama
+from colorama import Fore, Style
 ##################################################################
 
 from alphapose.utils.transforms import get_func_heatmap_to_coord
@@ -316,25 +318,51 @@ class SingleImageAlphaPose():
         ####################################################################################
         #init rospy
         rospy.init_node("vision", anonymous = True)
-        self.watcher = rospy.Subscriber("/realsense/color/image_raw", Image, self.rospy_interface)
-        self.depth = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, )
-        self.poser = rospy.Publisher("/alphapose", Image, queue_size=1)
+        self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
+        self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         rospy.spin()
         ####################################################################################
 
-    def rospy_interface(self, input):
-        self.image = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+    def pose_CB(self, input):
 
-        self.pose = self.process("demo", self.image)
-        self.image = self.getImg()     # or you can just use: img = cv2.imread(image)
-        self.image = self.vis(self.image, self.pose)
+        self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        self.pose = self.process("demo", self.img_POSE)
+        self.vis_POSE = self.vis(self.img_POSE, self.pose)
+        self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
+        self.pub_POSE.publish(self.out_POSE)
 
-        self.image = cv2.resize(self.image, [256, 192])
+        self.keypoints = self.pose['result'][0]['keypoints']
 
-        self.out = CvBridge().cv2_to_imgmsg(self.image, encoding = 'rgb8')
-        self.poser.publish(self.out)
+        self.secs = str(input.header.stamp)[:10]
+        self.nsecs = str(input.header.stamp)[10:]
 
-    def process(self, im_name, image=None):
+        #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+        self.R_wrist = self.keypoints[10]
+        self.L_wrist = self.keypoints[9]
+        #print(f"Kolicina tock: {len(self.keypoints)}")
+        #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
+
+    def depth_CB(self, input):
+        self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='passthrough')
+        #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
+        #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
+        self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = 'passthrough')
+        self.pub_DEPTH.publish(self.out_DEPTH)
+        
+        self.wristdepth_R = input.data[int(self.R_wrist[0]*self.R_wrist[1])]
+        self.wristdepth_L = input.data[int(self.L_wrist[0]*self.L_wrist[1])]
+
+        print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
+        print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
+
+        
+        
+
+
+
+    def process(self, im_name, image):
         # Init data writer
         self.writer = DataWriter(self.cfg, self.args)
 
@@ -347,7 +375,7 @@ class SingleImageAlphaPose():
         try:
             start_time = getTime()
             with torch.no_grad():
-                (inps, orig_img, im_name, boxes, scores, ids, cropped_boxes) = self.det_loader.process(im_name, self.image).read()
+                (inps, orig_img, im_name, boxes, scores, ids, cropped_boxes) = self.det_loader.process(im_name, image).read()
                 if orig_img is None:
                     raise Exception("no image is given")
                 if boxes is None or boxes.nelement() == 0:
