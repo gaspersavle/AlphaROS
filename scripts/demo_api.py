@@ -327,7 +327,9 @@ class SingleImageAlphaPose():
         #init rospy
         rospy.init_node("vision", anonymous = True)
 
-        
+        self.pub_TRANS_POSE = tf2_ros.transform_broadcaster()
+        self.transmsg = geometry_msgs.msg.TransformStamped()
+
         self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
@@ -404,22 +406,23 @@ class SingleImageAlphaPose():
             print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
             print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
 
-        """ self.wristdepthlist_R = []
-            self.wristdepthlist_L = []
+    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "world",child_frame="TEST1"):
+        
+        self.transmsg.header.stamp = rospy.Time.now()
+        self.transmsg.header.frame_id = parent_frame
 
-            for y in range(-5, 5):
-                self.wristdepthlist_R.append(int(input.data[int(self.rwx-5):int(self.rwx+5)*int(self.rwy+y)]),base=10)
-                self.wristdepthlist_L.append(int(input.data[int(self.lwx-5):int(self.lwx+5)*int(self.lwy+y)]),base=10)
+        self.transmsg.child_frame_id = child_frame
 
-            
-            self.wristdepth_R = stat.mean(self.wristdepthlist_R)
-            self.wristdepth_L = stat.mean(self.wristdepthlist_L)
-            print(self.wristdepthlist_L) """
+        self.transmsg.transform.translation.x = p[0]
+        self.transmsg.transform.translation.y = p[1]
+        self.transmsg.transform.translation.z = p[2]
 
+        self.transmsg.transform.rotation.w = q[0]
+        self.transmsg.transform.rotation.x = q[1]
+        self.transmsg.transform.rotation.y = q[2]
+        self.transmsg.transform.rotation.z = q[3]
 
-
-
-
+        self.pub_TRANS_POSE.sendTransform(self.transmsg)
         
         
 
