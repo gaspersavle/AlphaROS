@@ -326,7 +326,9 @@ class SingleImageAlphaPose():
         ####################################################################################
         #init rospy
         rospy.init_node("vision", anonymous = True)
-        self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max")
+
+        
+        self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
