@@ -306,6 +306,7 @@ class DataWriter():
     def save(self, boxes, scores, ids, hm_data, cropped_boxes, orig_img, im_name):
         self.item = (boxes, scores, ids, hm_data, cropped_boxes, orig_img, im_name)
 
+
 class SingleImageAlphaPose():
     def __init__(self, args, cfg):
         self.args = args
@@ -327,7 +328,7 @@ class SingleImageAlphaPose():
         #init rospy
         rospy.init_node("vision", anonymous = True)
 
-        self.pub_TRANS_POSE = tf2_ros.transform_broadcaster()
+        self.pub_TRANS_POSE = tf2_ros.TransformBroadcaster()
         self.transmsg = geometry_msgs.msg.TransformStamped()
 
         self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
@@ -341,6 +342,7 @@ class SingleImageAlphaPose():
     def pose_CB(self, input):
 
         self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        #self.img_POSE = cv2.resize(self.img_POSE, ())
         self.pose = self.process("demo", self.img_POSE)
         self.vis_POSE = self.vis(self.img_POSE, self.pose)
 
@@ -351,8 +353,30 @@ class SingleImageAlphaPose():
             self.nsecs = str(input.header.stamp)[10:]
 
             #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+            self.R_ankle = self.keypoints[16]
+            self.L_ankle = self.keypoints[15]
+
+            self.R_knee = self.keypoints[14]
+            self.L_knee = self.keypoints[13]
+
+            self.R_hip= self.keypoints[12]
+            self.L_hip= self.keypoints[11]
+
             self.R_wrist = self.keypoints[10]
             self.L_wrist = self.keypoints[9]
+
+            self.R_elbow = self.keypoints[8]
+            self.L_elbow = self.keypoints[7]
+
+            self.R_shoulder = self.keypoints[6]
+            self.L_shoulder = self.keypoints[5]
+
+            self.R_ear = self.keypoints[4]
+            self.L_ear = self.keypoints[3]
+
+            self.R_eye = self.keypoints[2]
+            self.L_eye = self.keypoints[1]
+            self.nose = self.keypoints[0]
 
             self.lwx, self.lwy = int(self.L_wrist[0]), int(self.L_wrist[1])
             self.rwx, self.rwy = int(self.R_wrist[0]), int(self.R_wrist[1])
@@ -364,24 +388,30 @@ class SingleImageAlphaPose():
             if self.args.circles == True:
                 self.vis_POSE = cv2.circle(self.vis_POSE, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
                 self.vis_POSE = cv2.circle(self.vis_POSE, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
-                #pass
+                
+                self.vis_POSE = cv2.circle(self.vis_POSE, (self.maxdepth_loc[1], self.maxdepth_loc[0]), radius=10, color=(0, 255, 0), thickness=2)
+                self.vis_POSE = cv2.circle(self.vis_POSE, (self.mindepth_loc[1], self.mindepth_loc[0]), radius=10, color=(255, 0, 0), thickness=2)
 
             if self.args.depth == True:
                 self.vis_POSE = cv2.putText(self.vis_POSE,
-                text=str(self.wristdepth_L),
-                org=(self.lwx, self.lwy),
+                text=self.rounddepth_L,
+                org=(self.lwx-60, self.lwy),
                 fontFace=cv2.FONT_HERSHEY_DUPLEX,
                 fontScale=0.5,
-                color=(255, 0, 255),
-                thickness=2)
+                color=(0, 128, 128),
+                thickness=1)
 
                 self.vis_POSE = cv2.putText(self.vis_POSE,
-                text=str(self.wristdepth_R),
-                org=(self.rwx, self.rwy),
+                text=self.rounddepth_R,
+                org=(self.rwx+30, self.rwy),
                 fontFace=cv2.FONT_HERSHEY_DUPLEX,
                 fontScale=0.5,
-                color=(255, 0, 255),
-                thickness=2)
+                color=(0, 128, 128),
+                thickness=1)
+              
+                #pass
+
+            
 
             #print(f"Kolicina tock: {len(self.keypoints)}")
             #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
@@ -395,27 +425,54 @@ class SingleImageAlphaPose():
         self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
         #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
         #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
-        self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
-        self.pub_DEPTH.publish(self.out_DEPTH)
+        
         #print(f"{Fore.YELLOW} {self.img_DEPTH}")
         if self.pose != None:
 
-            self.wristdepth_R = self.img_DEPTH[int(self.R_wrist[0]),int(self.R_wrist[1])]
-            self.wristdepth_L = self.img_DEPTH[int(self.L_wrist[0]),int(self.L_wrist[1])]
+            self.wristdepth_R = self.depth_remap(self.img_DEPTH[self.rwy,self.rwx])
+            self.wristdepth_L = self.depth_remap(self.img_DEPTH[self.lwy,self.lwx])
+
+            #self.wristdepth_R = self.img_DEPTH[self.rwx,self.rwy]
+            #self.wristdepth_L = self.img_DEPTH[self.lwx,self.lwy]
 
             print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
             print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
+            #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
+            
+            self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_DEPTH),self.img_DEPTH.shape), np.unravel_index(np.argmin(self.img_DEPTH), self.img_DEPTH.shape)
+            
+            self.rounddepth_L = str(self.wristdepth_L)[:4]
+            self.rounddepth_R = str(self.wristdepth_R)[:4]
 
-    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "world",child_frame="TEST1"):
+            print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
+            
+
+            self.SendTransform2tf(p = [self.lwx, self.lwy, self.wristdepth_L])
+
+            # depth ---> Z
+            # lwx/rwx -> X
+            # lwy/rwy -> Y
+
+            if self.args.circles == True:
+                self.circle_DEPTH = cv2.circle(self.img_DEPTH, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
+
+        else:
+            self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
+
+        self.pub_DEPTH.publish(self.out_DEPTH)
+
+    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
         
         self.transmsg.header.stamp = rospy.Time.now()
         self.transmsg.header.frame_id = parent_frame
 
         self.transmsg.child_frame_id = child_frame
 
-        self.transmsg.transform.translation.x = p[0]
-        self.transmsg.transform.translation.y = p[1]
-        self.transmsg.transform.translation.z = p[2]
+        self.transmsg.transform.translation.x = p[0]/200
+        self.transmsg.transform.translation.y = p[1]/200
+        self.transmsg.transform.translation.z = p[2]/5
 
         self.transmsg.transform.rotation.w = q[0]
         self.transmsg.transform.rotation.x = q[1]
@@ -423,8 +480,18 @@ class SingleImageAlphaPose():
         self.transmsg.transform.rotation.z = q[3]
 
         self.pub_TRANS_POSE.sendTransform(self.transmsg)
-        
-        
+
+    def depth_remap(self, depth):
+        self.adj_DEPTH = 65536- depth
+        self.range_16b = 65536
+        self.range_depth = 500 - 3
+        self.remapped = (depth * self.range_depth) / self.range_16b + 0.3
+
+        return self.remapped
+
+
+
+
 
 
 
