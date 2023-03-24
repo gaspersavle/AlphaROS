@@ -11,12 +11,16 @@ import platform
 import sys
 import math
 import time
+import statistics as stat
 
 import cv2
 import numpy as np
 
 ##################################################################
 import rospy
+import tf2_ros
+import tf2_geometry_msgs
+import geometry_msgs.msg
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge   
 import colorama
@@ -64,6 +68,10 @@ parser.add_argument('--debug', default=False, action='store_true',
                     help='print detail information')
 parser.add_argument('--vis_fast', dest='vis_fast',
                     help='use fast rendering', action='store_true', default=False)
+parser.add_argument('--circles', default = False, action = 'store_true',
+                    help='draw circles arround wrists')
+parser.add_argument('--depth', default = False, action = 'store_true',
+                    help='display wrist proximity')
 """----------------------------- Tracking options -----------------------------"""
 parser.add_argument('--pose_flow', dest='pose_flow',
                     help='track humans in video with PoseFlow', action='store_true', default=False)
@@ -318,6 +326,9 @@ class SingleImageAlphaPose():
         ####################################################################################
         #init rospy
         rospy.init_node("vision", anonymous = True)
+
+        self.trans_POSE = tf2_ros.
+        self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
@@ -330,32 +341,84 @@ class SingleImageAlphaPose():
         self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
         self.pose = self.process("demo", self.img_POSE)
         self.vis_POSE = self.vis(self.img_POSE, self.pose)
+
+        if self.pose != None:
+            self.keypoints = self.pose['result'][0]['keypoints']
+
+            self.secs = str(input.header.stamp)[:10]
+            self.nsecs = str(input.header.stamp)[10:]
+
+            #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+            self.R_wrist = self.keypoints[10]
+            self.L_wrist = self.keypoints[9]
+
+            self.lwx, self.lwy = int(self.L_wrist[0]), int(self.L_wrist[1])
+            self.rwx, self.rwy = int(self.R_wrist[0]), int(self.R_wrist[1])
+
+            #print(f"{Fore.GREEN} R.x: {self.R_wrist[0]} | R.y: {self.R_wrist[1]}")
+            #print(f"{Fore.GREEN} L.x: {self.L_wrist[0]} | L.y: {self.L_wrist[1]}")
+
+
+            if self.args.circles == True:
+                self.vis_POSE = cv2.circle(self.vis_POSE, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                self.vis_POSE = cv2.circle(self.vis_POSE, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                #pass
+
+            if self.args.depth == True:
+                self.vis_POSE = cv2.putText(self.vis_POSE,
+                text=str(self.wristdepth_L),
+                org=(self.lwx, self.lwy),
+                fontFace=cv2.FONT_HERSHEY_DUPLEX,
+                fontScale=0.5,
+                color=(255, 0, 255),
+                thickness=2)
+
+                self.vis_POSE = cv2.putText(self.vis_POSE,
+                text=str(self.wristdepth_R),
+                org=(self.rwx, self.rwy),
+                fontFace=cv2.FONT_HERSHEY_DUPLEX,
+                fontScale=0.5,
+                color=(255, 0, 255),
+                thickness=2)
+
+            #print(f"Kolicina tock: {len(self.keypoints)}")
+            #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
+        else:
+            print(f"{Fore.RED} No pose detected...")
+
         self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
         self.pub_POSE.publish(self.out_POSE)
 
-        self.keypoints = self.pose['result'][0]['keypoints']
-
-        self.secs = str(input.header.stamp)[:10]
-        self.nsecs = str(input.header.stamp)[10:]
-
-        #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
-        self.R_wrist = self.keypoints[10]
-        self.L_wrist = self.keypoints[9]
-        #print(f"Kolicina tock: {len(self.keypoints)}")
-        #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
-
     def depth_CB(self, input):
-        self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='passthrough')
+        self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
         #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
         #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
-        self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = 'passthrough')
+        self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
         self.pub_DEPTH.publish(self.out_DEPTH)
-        
-        self.wristdepth_R = input.data[int(self.R_wrist[0]*self.R_wrist[1])]
-        self.wristdepth_L = input.data[int(self.L_wrist[0]*self.L_wrist[1])]
+        #print(f"{Fore.YELLOW} {self.img_DEPTH}")
+        if self.pose != None:
 
-        print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
-        print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
+            self.wristdepth_R = self.img_DEPTH[int(self.R_wrist[0]),int(self.R_wrist[1])]
+            self.wristdepth_L = self.img_DEPTH[int(self.L_wrist[0]),int(self.L_wrist[1])]
+
+            print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
+            print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
+
+        """ self.wristdepthlist_R = []
+            self.wristdepthlist_L = []
+
+            for y in range(-5, 5):
+                self.wristdepthlist_R.append(int(input.data[int(self.rwx-5):int(self.rwx+5)*int(self.rwy+y)]),base=10)
+                self.wristdepthlist_L.append(int(input.data[int(self.lwx-5):int(self.lwx+5)*int(self.lwy+y)]),base=10)
+
+            
+            self.wristdepth_R = stat.mean(self.wristdepthlist_R)
+            self.wristdepth_L = stat.mean(self.wristdepthlist_L)
+            print(self.wristdepthlist_L) """
+
+
+
+
 
         
         
