@@ -423,14 +423,15 @@ class SingleImageAlphaPose():
 
     def depth_CB(self, input):
         self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
+        self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
         #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
         #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
         
         #print(f"{Fore.YELLOW} {self.img_DEPTH}")
         if self.pose != None:
 
-            self.wristdepth_R = self.depth_remap(self.img_DEPTH[self.rwy,self.rwx])
-            self.wristdepth_L = self.depth_remap(self.img_DEPTH[self.lwy,self.lwx])
+            self.wristdepth_R = self.depth_remap(self.img_blur_DEPTH[self.rwy,self.rwx])
+            self.wristdepth_L = self.depth_remap(self.img_blur_DEPTH[self.lwy,self.lwx])
 
             #self.wristdepth_R = self.img_DEPTH[self.rwx,self.rwy]
             #self.wristdepth_L = self.img_DEPTH[self.lwx,self.lwy]
@@ -439,13 +440,14 @@ class SingleImageAlphaPose():
             print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
             #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
             
-            self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_DEPTH),self.img_DEPTH.shape), np.unravel_index(np.argmin(self.img_DEPTH), self.img_DEPTH.shape)
-            
+            self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
+
+
             self.rounddepth_L = str(self.wristdepth_L)[:4]
             self.rounddepth_R = str(self.wristdepth_R)[:4]
 
             print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
-            
+            print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
 
             self.SendTransform2tf(p = [self.lwx, self.lwy, self.wristdepth_L])
 
@@ -454,7 +456,7 @@ class SingleImageAlphaPose():
             # lwy/rwy -> Y
 
             if self.args.circles == True:
-                self.circle_DEPTH = cv2.circle(self.img_DEPTH, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
                 self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
                 self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
 
@@ -470,9 +472,9 @@ class SingleImageAlphaPose():
 
         self.transmsg.child_frame_id = child_frame
 
-        self.transmsg.transform.translation.x = p[0]/200
-        self.transmsg.transform.translation.y = p[1]/200
-        self.transmsg.transform.translation.z = p[2]/5
+        self.transmsg.transform.translation.x = -self.xToWorld(p[0], p[2])/100000
+        self.transmsg.transform.translation.y = -self.yToWorld(p[1], p[2])/100000
+        self.transmsg.transform.translation.z = p[2]
 
         self.transmsg.transform.rotation.w = q[0]
         self.transmsg.transform.rotation.x = q[1]
@@ -485,12 +487,23 @@ class SingleImageAlphaPose():
         self.adj_DEPTH = 65536- depth
         self.range_16b = 65536
         self.range_depth = 500 - 3
-        self.remapped = (depth * self.range_depth) / self.range_16b + 0.3
+        self.remapped = (depth * self.range_depth) / self.range_16b 
 
-        return self.remapped/10
+        #return self.remapped
+        return self.remapped/20 + 0.3
 
 
+    def xToWorld(self, x, z):
+        K_v = 369.98 #vertical pixels/milimetre
+        f = 1.93 #focal distance [mm]
+        newx = -(z/f)*(K_v * x)
+        return newx
 
+    def yToWorld(self, y, z):
+        K_u = 498.05 #horizontal pixels/milimetre
+        f = 1.93 #focal distance [mm]
+        newy = -(z/f)*(K_u * y)
+        return newy
 
 
 
