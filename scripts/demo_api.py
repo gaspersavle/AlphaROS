@@ -487,7 +487,7 @@ class SingleImageAlphaPose():
         self.range_depth = 500 - 3
         self.remapped = (depth * self.range_depth) / self.range_16b + 0.3
 
-        return self.remapped
+        return self.remapped/10
 
 
 
