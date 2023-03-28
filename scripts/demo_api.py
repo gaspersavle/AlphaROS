@@ -12,6 +12,9 @@ import sys
 import math
 import time
 import statistics as stat
+import yaml
+import sys
+from helpers import path
 
 import cv2
 import numpy as np
@@ -323,6 +326,7 @@ class SingleImageAlphaPose():
         self.pose_model.eval()
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
+        init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
 
         ####################################################################################
         #init rospy
@@ -491,22 +495,39 @@ class SingleImageAlphaPose():
 
         #return self.remapped
         return self.remapped/20 + 0.3
+    
+    def uv_to_XY(self, u,v, Z=0.35, get_z_from_rosparam=True):
+        """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
+	    
+        assert self.P.shape == (3,4)
+	    
+        if get_z_from_rosparam:
+            try:
+                self.camera_height = rospy.get_param(self.camera_height_rosparamname)
+            except Exception as e:
+                rospy.loginfo("realsense: Exception, couldn't get param: " + self.camera_height_rosparamname)
+        
+        Z = self.camera_height
+	    
+        fx = self.P[0,0]
+        fy = self.P[1,1]
 
+        x = (u - (self.P[0,2])) / fx
+        y = (v - (self.P[1,2])) / fy
 
-    def xToWorld(self, x, z):
-        K_v = 369.98 #vertical pixels/milimetre
-        f = 1.93 #focal distance [mm]
-        newx = -(z/f)*(K_v * x)
-        return newx
+        X = (Z * x)
+        Y = (Z * y)
+        Z = Z
+        return X, Y, Z
 
-    def yToWorld(self, y, z):
-        K_u = 498.05 #horizontal pixels/milimetre
-        f = 1.93 #focal distance [mm]
-        newy = -(z/f)*(K_u * y)
-        return newy
-
-
-
+    def create_service_client(self):
+        timeout = 2
+        try:
+            print("waiting for service:" + path('/alphapose', "enable") + " ...")
+            rospy.wait_for_service(path('/alphapose', "enable"), timeout) # 2 seconds
+        except rospy.ROSException as e:
+            print("[red]Couldn't find to service! " + path('/alphapose', "enable") + "[/red]")
+        self.camera_service = rospy.ServiceProxy(path('/alphapose', "enable"), SetBool)
 
     def process(self, im_name, image):
         # Init data writer
@@ -583,6 +604,26 @@ class SingleImageAlphaPose():
         from alphapose.utils.pPose_nms import write_json
         write_json(final_result, outputpath, form=form, for_eval=for_eval)
         print("Results have been written to json.")
+
+    def parse_calib_yaml(self, fn):
+        """Parse camera calibration file (which is hand-made using ros camera_calibration) """
+
+        with open(fn, "r") as stream:
+            try:
+                data = yaml.safe_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
+        data = data['Realsense']
+        init_p = data['init_robot_pos']
+        #print(data)
+        w  = data['coeffs'][0]['width']
+        h = data['coeffs'][0]['height']
+    
+        D = np.array(data['coeffs'][0]['D'])
+        K = np.array(data['coeffs'][0]['K']).reshape(3,3)
+        P = np.array(data['coeffs'][0]['P']).reshape(3,4)
+    
+        return init_p, D, K, P, w, h
 
 
 if __name__ == "__main__":
