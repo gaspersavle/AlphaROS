@@ -317,6 +317,7 @@ class SingleImageAlphaPose():
         self.cfg = cfg
         self.image = None
         self.rs_cameraNode = '/realsense/alphapose'
+        self.config = update_config(config_file='config.yaml')
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
@@ -498,16 +499,10 @@ class SingleImageAlphaPose():
         #return self.remapped
         return self.remapped/20 + 0.3
     
-    def uv_to_XY(self, u,v, Z=0.35, get_z_from_rosparam=True):
+    def uv_to_XY(self, u,v, z):
         """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
 	    
         assert self.P.shape == (3,4)
-	    
-        if get_z_from_rosparam:
-            try:
-                self.camera_height = rospy.get_param(self.camera_height_rosparamname)
-            except Exception as e:
-                rospy.loginfo("realsense: Exception, couldn't get param: " + self.camera_height_rosparamname)
         
         Z = self.camera_height
 	    
@@ -517,9 +512,9 @@ class SingleImageAlphaPose():
         x = (u - (self.P[0,2])) / fx
         y = (v - (self.P[1,2])) / fy
 
-        X = (Z * x)
-        Y = (Z * y)
-        Z = Z
+        X = (z * x)
+        Y = (z * y)
+        Z = z
         return X, Y, Z
 
     def create_service_client(self):
@@ -527,11 +522,11 @@ class SingleImageAlphaPose():
         if self.config.realsense.wait_for_services:
             timeout = None
         try:
-            print("waiting for service:" + self.rs_cameraNode, "enable") + " ...")
+            print("waiting for service:" + self.rs_cameraNode, "enable" + " ...")
             rospy.wait_for_service(self.rs_cameraNode, timeout) # 2 seconds
         except rospy.ROSException as e:
             print("[red]Couldn't find to service! " + self.rs_cameraNode + "[/red]")
-        self.camera_service = rospy.ServiceProxy(self.rs_cameraNode, "enable"), SetBool)
+        self.camera_service = rospy.ServiceProxy(self.rs_cameraNode, "enable", SetBool)
 
     def process(self, im_name, image):
         # Init data writer
