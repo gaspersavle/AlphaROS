@@ -14,7 +14,7 @@ import time
 import statistics as stat
 import yaml
 import sys
-from helpers import path
+#from helpers import path
 
 import cv2
 import numpy as np
@@ -317,6 +317,7 @@ class SingleImageAlphaPose():
         self.cfg = cfg
         self.image = None
         self.rs_cameraNode = '/realsense/alphapose'
+        #self.config = update_config(config_file='config.yaml')
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
@@ -328,7 +329,7 @@ class SingleImageAlphaPose():
         self.pose_model.eval()
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
-        init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
+        #init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
 
         ####################################################################################
         #init rospy
@@ -453,9 +454,9 @@ class SingleImageAlphaPose():
             self.rounddepth_R = str(self.wristdepth_R)[:4]
 
             print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
-            print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
+            #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
 
-            self.SendTransform2tf(p = [self.lwx, self.lwy, self.wristdepth_L])
+            self.SendTransform2tf(p = self.uv_to_XY(self.lwx, self.lwy, self.wristdepth_L))
 
             # depth ---> Z
             # lwx/rwx -> X
@@ -478,8 +479,8 @@ class SingleImageAlphaPose():
 
         self.transmsg.child_frame_id = child_frame
 
-        self.transmsg.transform.translation.x = -self.xToWorld(p[0], p[2])/100000
-        self.transmsg.transform.translation.y = -self.yToWorld(p[1], p[2])/100000
+        self.transmsg.transform.translation.x = p[0]
+        self.transmsg.transform.translation.y = p[1]
         self.transmsg.transform.translation.z = p[2]
 
         self.transmsg.transform.rotation.w = q[0]
@@ -492,46 +493,32 @@ class SingleImageAlphaPose():
     def depth_remap(self, depth):
         self.adj_DEPTH = 65536- depth
         self.range_16b = 65536
-        self.range_depth = 500 - 3
+        self.range_depth = 300 - 3
         self.remapped = (depth * self.range_depth) / self.range_16b 
 
         #return self.remapped
         return self.remapped/20 + 0.3
     
-    def uv_to_XY(self, u,v, Z=0.35, get_z_from_rosparam=True):
+    def uv_to_XY(self, u,v, z):
         """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
-	    
-        assert self.P.shape == (3,4)
-	    
-        if get_z_from_rosparam:
-            try:
-                self.camera_height = rospy.get_param(self.camera_height_rosparamname)
-            except Exception as e:
-                rospy.loginfo("realsense: Exception, couldn't get param: " + self.camera_height_rosparamname)
-        
-        Z = self.camera_height
-	    
-        fx = self.P[0,0]
-        fy = self.P[1,1]
+        fx = 607.167297
+        fy = 608.291809
 
-        x = (u - (self.P[0,2])) / fx
-        y = (v - (self.P[1,2])) / fy
+        x = (u - (326.998790)) / fx
+        y = (v - (244.887363)) / fy
 
-        X = (Z * x)
-        Y = (Z * y)
-        Z = Z
-        return X, Y, Z
+        X = (z * x)
+        Y = (z * y)
+        Z = z
+        return [X, Y, Z]
 
     def create_service_client(self):
-        timeout = 2 # 2 second timeout
-        if self.config.realsense.wait_for_services:
-            timeout = None
         try:
-            print("waiting for service:" + self.rs_cameraNode, "enable") + " ...")
-            rospy.wait_for_service(self.rs_cameraNode, timeout) # 2 seconds
+            print("waiting for service:" + self.rs_cameraNode, "enable" + " ...")
+            rospy.wait_for_service(self.rs_cameraNode, 2) # 2 seconds
         except rospy.ROSException as e:
             print("[red]Couldn't find to service! " + self.rs_cameraNode + "[/red]")
-        self.camera_service = rospy.ServiceProxy(self.rs_cameraNode, "enable"), SetBool)
+        self.camera_service = rospy.ServiceProxy(self.rs_cameraNode, "enable", SetBool)
 
     def process(self, im_name, image):
         # Init data writer
