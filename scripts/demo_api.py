@@ -24,6 +24,7 @@ import rospy
 import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
+from std_msgs.msg import Bool
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge   
 import colorama
@@ -315,6 +316,7 @@ class SingleImageAlphaPose():
         self.args = args
         self.cfg = cfg
         self.image = None
+        self.rs_cameraNode = '/realsense/alphapose'
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
@@ -521,13 +523,15 @@ class SingleImageAlphaPose():
         return X, Y, Z
 
     def create_service_client(self):
-        timeout = 2
+        timeout = 2 # 2 second timeout
+        if self.config.realsense.wait_for_services:
+            timeout = None
         try:
-            print("waiting for service:" + path('/alphapose', "enable") + " ...")
-            rospy.wait_for_service(path('/alphapose', "enable"), timeout) # 2 seconds
+            print("waiting for service:" + self.rs_cameraNode, "enable") + " ...")
+            rospy.wait_for_service(self.rs_cameraNode, timeout) # 2 seconds
         except rospy.ROSException as e:
-            print("[red]Couldn't find to service! " + path('/alphapose', "enable") + "[/red]")
-        self.camera_service = rospy.ServiceProxy(path('/alphapose', "enable"), SetBool)
+            print("[red]Couldn't find to service! " + self.rs_cameraNode + "[/red]")
+        self.camera_service = rospy.ServiceProxy(self.rs_cameraNode, "enable"), SetBool)
 
     def process(self, im_name, image):
         # Init data writer
