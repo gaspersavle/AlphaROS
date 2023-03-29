@@ -25,6 +25,7 @@ import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool
+from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image
 from cv_bridge import CvBridge   
 import colorama
@@ -316,12 +317,11 @@ class SingleImageAlphaPose():
         self.args = args
         self.cfg = cfg
         self.image = None
-        self.rs_cameraNode = '/realsense/alphapose'
-<<<<<<< HEAD
-        self.config = update_config(config_file='config.yaml')
-=======
+        self.enablePose = False
+        self.poseNode = '/realsense/alphapose/enable'
+        rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
+        self.create_service_client()
         #self.config = update_config(config_file='config.yaml')
->>>>>>> 0ce8b4e2262cd807ba1462763f9c4aeab93beabd
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
@@ -351,130 +351,132 @@ class SingleImageAlphaPose():
         ####################################################################################
 
     def pose_CB(self, input):
+        if self.enablePose:
+            self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+            #self.img_POSE = cv2.resize(self.img_POSE, ())
+            self.pose = self.process("demo", self.img_POSE)
+            self.vis_POSE = self.vis(self.img_POSE, self.pose)
 
-        self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-        #self.img_POSE = cv2.resize(self.img_POSE, ())
-        self.pose = self.process("demo", self.img_POSE)
-        self.vis_POSE = self.vis(self.img_POSE, self.pose)
+            if self.pose != None:
+                self.keypoints = self.pose['result'][0]['keypoints']
 
-        if self.pose != None:
-            self.keypoints = self.pose['result'][0]['keypoints']
+                self.secs = str(input.header.stamp)[:10]
+                self.nsecs = str(input.header.stamp)[10:]
 
-            self.secs = str(input.header.stamp)[:10]
-            self.nsecs = str(input.header.stamp)[10:]
+                #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+                self.R_ankle = self.keypoints[16]
+                self.L_ankle = self.keypoints[15]
 
-            #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
-            self.R_ankle = self.keypoints[16]
-            self.L_ankle = self.keypoints[15]
+                self.R_knee = self.keypoints[14]
+                self.L_knee = self.keypoints[13]
 
-            self.R_knee = self.keypoints[14]
-            self.L_knee = self.keypoints[13]
+                self.R_hip= self.keypoints[12]
+                self.L_hip= self.keypoints[11]
 
-            self.R_hip= self.keypoints[12]
-            self.L_hip= self.keypoints[11]
+                self.R_wrist = self.keypoints[10]
+                self.L_wrist = self.keypoints[9]
 
-            self.R_wrist = self.keypoints[10]
-            self.L_wrist = self.keypoints[9]
+                self.R_elbow = self.keypoints[8]
+                self.L_elbow = self.keypoints[7]
 
-            self.R_elbow = self.keypoints[8]
-            self.L_elbow = self.keypoints[7]
+                self.R_shoulder = self.keypoints[6]
+                self.L_shoulder = self.keypoints[5]
 
-            self.R_shoulder = self.keypoints[6]
-            self.L_shoulder = self.keypoints[5]
+                self.R_ear = self.keypoints[4]
+                self.L_ear = self.keypoints[3]
 
-            self.R_ear = self.keypoints[4]
-            self.L_ear = self.keypoints[3]
+                self.R_eye = self.keypoints[2]
+                self.L_eye = self.keypoints[1]
+                self.nose = self.keypoints[0]
 
-            self.R_eye = self.keypoints[2]
-            self.L_eye = self.keypoints[1]
-            self.nose = self.keypoints[0]
+                self.lwx, self.lwy = int(self.L_wrist[0]), int(self.L_wrist[1])
+                self.rwx, self.rwy = int(self.R_wrist[0]), int(self.R_wrist[1])
 
-            self.lwx, self.lwy = int(self.L_wrist[0]), int(self.L_wrist[1])
-            self.rwx, self.rwy = int(self.R_wrist[0]), int(self.R_wrist[1])
-
-            #print(f"{Fore.GREEN} R.x: {self.R_wrist[0]} | R.y: {self.R_wrist[1]}")
-            #print(f"{Fore.GREEN} L.x: {self.L_wrist[0]} | L.y: {self.L_wrist[1]}")
+                #print(f"{Fore.GREEN} R.x: {self.R_wrist[0]} | R.y: {self.R_wrist[1]}")
+                #print(f"{Fore.GREEN} L.x: {self.L_wrist[0]} | L.y: {self.L_wrist[1]}")
 
 
-            if self.args.circles == True:
-                self.vis_POSE = cv2.circle(self.vis_POSE, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
-                self.vis_POSE = cv2.circle(self.vis_POSE, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                if self.args.circles == True:
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                    
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.maxdepth_loc[1], self.maxdepth_loc[0]), radius=10, color=(0, 255, 0), thickness=2)
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.mindepth_loc[1], self.mindepth_loc[0]), radius=10, color=(255, 0, 0), thickness=2)
+
+                if self.args.depth == True:
+                    self.vis_POSE = cv2.putText(self.vis_POSE,
+                    text=self.rounddepth_L,
+                    org=(self.lwx-60, self.lwy),
+                    fontFace=cv2.FONT_HERSHEY_DUPLEX,
+                    fontScale=0.5,
+                    color=(0, 128, 128),
+                    thickness=1)
+
+                    self.vis_POSE = cv2.putText(self.vis_POSE,
+                    text=self.rounddepth_R,
+                    org=(self.rwx+30, self.rwy),
+                    fontFace=cv2.FONT_HERSHEY_DUPLEX,
+                    fontScale=0.5,
+                    color=(0, 128, 128),
+                    thickness=1)
                 
-                self.vis_POSE = cv2.circle(self.vis_POSE, (self.maxdepth_loc[1], self.maxdepth_loc[0]), radius=10, color=(0, 255, 0), thickness=2)
-                self.vis_POSE = cv2.circle(self.vis_POSE, (self.mindepth_loc[1], self.mindepth_loc[0]), radius=10, color=(255, 0, 0), thickness=2)
+                    #pass
 
-            if self.args.depth == True:
-                self.vis_POSE = cv2.putText(self.vis_POSE,
-                text=self.rounddepth_L,
-                org=(self.lwx-60, self.lwy),
-                fontFace=cv2.FONT_HERSHEY_DUPLEX,
-                fontScale=0.5,
-                color=(0, 128, 128),
-                thickness=1)
+                
 
-                self.vis_POSE = cv2.putText(self.vis_POSE,
-                text=self.rounddepth_R,
-                org=(self.rwx+30, self.rwy),
-                fontFace=cv2.FONT_HERSHEY_DUPLEX,
-                fontScale=0.5,
-                color=(0, 128, 128),
-                thickness=1)
-              
-                #pass
+                #print(f"Kolicina tock: {len(self.keypoints)}")
+                #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
+            else:
+                print(f"{Fore.RED} No pose detected...")
 
-            
-
-            #print(f"Kolicina tock: {len(self.keypoints)}")
-            #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
-        else:
-            print(f"{Fore.RED} No pose detected...")
-
-        self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
-        self.pub_POSE.publish(self.out_POSE)
+            self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
+            self.pub_POSE.publish(self.out_POSE)
 
     def depth_CB(self, input):
-        self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
-        self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
-        #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
-        #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
-        
-        #print(f"{Fore.YELLOW} {self.img_DEPTH}")
-        if self.pose != None:
 
-            self.wristdepth_R = self.depth_remap(self.img_blur_DEPTH[self.rwy,self.rwx])
-            self.wristdepth_L = self.depth_remap(self.img_blur_DEPTH[self.lwy,self.lwx])
-
-            #self.wristdepth_R = self.img_DEPTH[self.rwx,self.rwy]
-            #self.wristdepth_L = self.img_DEPTH[self.lwx,self.lwy]
-
-            print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
-            print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
-            #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
+        if self.enablePose:
+            self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
+            self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
+            #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
+            #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
             
-            self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
+            #print(f"{Fore.YELLOW} {self.img_DEPTH}")
+            if self.pose != None:
+
+                self.wristdepth_R = self.depth_remap(self.img_blur_DEPTH[self.rwy,self.rwx])
+                self.wristdepth_L = self.depth_remap(self.img_blur_DEPTH[self.lwy,self.lwx])
+
+                #self.wristdepth_R = self.img_DEPTH[self.rwx,self.rwy]
+                #self.wristdepth_L = self.img_DEPTH[self.lwx,self.lwy]
+
+                print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
+                print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
+                #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
+                
+                self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
 
 
-            self.rounddepth_L = str(self.wristdepth_L)[:4]
-            self.rounddepth_R = str(self.wristdepth_R)[:4]
+                self.rounddepth_L = str(self.wristdepth_L)[:4]
+                self.rounddepth_R = str(self.wristdepth_R)[:4]
 
-            print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
-            #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
+                print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
+                #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
 
-            self.SendTransform2tf(p = self.uv_to_XY(self.lwx, self.lwy, self.wristdepth_L))
+                self.SendTransform2tf(p = self.uv_to_XY(self.lwx, self.lwy, self.wristdepth_L))
 
-            # depth ---> Z
-            # lwx/rwx -> X
-            # lwy/rwy -> Y
+                # depth ---> Z
+                # lwx/rwx -> X
+                # lwy/rwy -> Y
 
-            if self.args.circles == True:
-                self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
-                self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
-                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
+                if self.args.circles == True:
+                    self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                    self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
 
-        else:
-            self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
+            else:
+                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
 
-        self.pub_DEPTH.publish(self.out_DEPTH)
+            self.pub_DEPTH.publish(self.out_DEPTH)
 
     def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
         
@@ -505,18 +507,8 @@ class SingleImageAlphaPose():
     
     def uv_to_XY(self, u,v, z):
         """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
-<<<<<<< HEAD
-	    
-        assert self.P.shape == (3,4)
-        
-        Z = self.camera_height
-	    
-        fx = self.P[0,0]
-        fy = self.P[1,1]
-=======
         fx = 607.167297
         fy = 608.291809
->>>>>>> 0ce8b4e2262cd807ba1462763f9c4aeab93beabd
 
         x = (u - (326.998790)) / fx
         y = (v - (244.887363)) / fy
@@ -524,23 +516,27 @@ class SingleImageAlphaPose():
         X = (z * x)
         Y = (z * y)
         Z = z
-<<<<<<< HEAD
-        return X, Y, Z
-=======
         return [X, Y, Z]
->>>>>>> 0ce8b4e2262cd807ba1462763f9c4aeab93beabd
+
+    def enablePose_CB(self, req):
+        state = req.data
+        if state:
+            print("AlphaPose: starting...")
+            self.enablePose = True
+            msg = self.poseNode + " started."
+        else:
+            print("AlphaPose: stopping...")
+            self.enablePose = False
+            msg = self.poseNode + " stopped."
+        return True, msg
 
     def create_service_client(self):
         try:
-            print("waiting for service:" + self.rs_cameraNode, "enable" + " ...")
-<<<<<<< HEAD
-            rospy.wait_for_service(self.rs_cameraNode, timeout) # 2 seconds
-=======
-            rospy.wait_for_service(self.rs_cameraNode, 2) # 2 seconds
->>>>>>> 0ce8b4e2262cd807ba1462763f9c4aeab93beabd
+            print("waiting for service:" + self.poseNode)
+            rospy.wait_for_service(self.poseNode, 2) # 2 seconds
         except rospy.ROSException as e:
-            print("[red]Couldn't find to service! " + self.rs_cameraNode + "[/red]")
-        self.camera_service = rospy.ServiceProxy(self.rs_cameraNode, "enable", SetBool)
+            print("Couldn't find to service! " + self.poseNode)
+        self.camera_service = rospy.ServiceProxy(self.poseNode, SetBool)
 
     def process(self, im_name, image):
         # Init data writer
