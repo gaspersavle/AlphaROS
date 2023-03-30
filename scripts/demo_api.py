@@ -345,6 +345,7 @@ class SingleImageAlphaPose():
         self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        #self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw/compressedDepth", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         rospy.spin()
@@ -389,11 +390,32 @@ class SingleImageAlphaPose():
                 self.L_eye = self.keypoints[1]
                 self.nose = self.keypoints[0]
 
+                #----------------------------------------------------------------------------------------------
+                self.nosex, self.nosey = int(self.nose[0]), int(self.nose[1])
+
                 self.lwx, self.lwy = int(self.L_wrist[0]), int(self.L_wrist[1])
                 self.rwx, self.rwy = int(self.R_wrist[0]), int(self.R_wrist[1])
 
+                self.shoulderLx, self.shoulderLy = int(self.L_shoulder[0]), int(self.L_shoulder[1])
+                self.shoulderRx, self.shoulderRy = int(self.R_shoulder[0]), int(self.R_shoulder[1])
+
+                self.hipRx, self.hipRy = int(self.R_hip[0]), int(self.R_hip[1])
+                self.hipLx, self.hipLy = int(self.L_hip[0]), int(self.L_hip[1])
+
+                self.elbowRx, self.elbowRy = int(self.R_elbow[0]), int(self.R_elbow[1])
+                self.elbowLx, self.elbowLy = int(self.L_elbow[0]), int(self.L_elbow[1])
+
+                self.kneeRx, self.kneeRy = int(self.R_knee[0]), int(self.R_knee[1])
+                self.kneeLx, self.kneeLy = int(self.L_knee[0]), int(self.L_knee[1])
+
+                self.ankleRx, self.ankleRy = int(self.R_ankle[0]), int(self.R_ankle[1])
+                self.ankleLx, self.ankleLy = int(self.L_ankle[0]), int(self.L_ankle[1])
+
+
+
                 #print(f"{Fore.GREEN} R.x: {self.R_wrist[0]} | R.y: {self.R_wrist[1]}")
                 #print(f"{Fore.GREEN} L.x: {self.L_wrist[0]} | L.y: {self.L_wrist[1]}")
+                #----------------------------------------------------------------------------------------------
 
 
                 if self.args.circles == True:
@@ -437,14 +459,32 @@ class SingleImageAlphaPose():
         if self.enablePose:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
             self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
+            #print(self.img_blur_DEPTH.shape)
             #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
             #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
             if self.pose != None:
 
+                self.nosedepth = self.depth_remap(self.img_blur_DEPTH[self.nosey,self.nosex])
+
                 self.wristdepth_R = self.depth_remap(self.img_blur_DEPTH[self.rwy,self.rwx])
                 self.wristdepth_L = self.depth_remap(self.img_blur_DEPTH[self.lwy,self.lwx])
+                
+                self.shoulderdepthL = self.depth_remap(self.img_blur_DEPTH[self.shoulderLy,self.shoulderLx])
+                self.shoulderdepthR = self.depth_remap(self.img_blur_DEPTH[self.shoulderRy,self.shoulderRx])
+
+                self.hipdepthL = self.depth_remap(self.img_blur_DEPTH[self.hipLy,self.hipLx])
+                self.hipdepthR = self.depth_remap(self.img_blur_DEPTH[self.hipRy,self.hipRx])
+
+                self.kneedepthL = self.depth_remap(self.img_blur_DEPTH[self.kneeLy, self.kneeLx])
+                self.kneedepthR = self.depth_remap(self.img_blur_DEPTH[self.kneeRy, self.kneeRx])
+
+                self.elbowdepthL = self.depth_remap(self.img_blur_DEPTH[self.elbowLy, self.elbowLx])
+                self.elbowdepthR = self.depth_remap(self.img_blur_DEPTH[self.elbowRy, self.elbowRx])
+
+                self.ankledepthL = self.depth_remap(self.img_blur_DEPTH[self.ankleLy, self.ankleLx])
+                self.ankledepthR = self.depth_remap(self.img_blur_DEPTH[self.ankleRy, self.ankleRx])
 
                 #self.wristdepth_R = self.img_DEPTH[self.rwx,self.rwy]
                 #self.wristdepth_L = self.img_DEPTH[self.lwx,self.lwy]
@@ -459,13 +499,38 @@ class SingleImageAlphaPose():
                 self.rounddepth_L = str(self.wristdepth_L)[:4]
                 self.rounddepth_R = str(self.wristdepth_R)[:4]
 
-                print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
+                print(f"{Fore.GREEN} Max depth: {self.img_blur_DEPTH[self.maxdepth_loc]} {Fore.RED} | Min depth: {self.img_blur_DEPTH[self.mindepth_loc]}")
                 #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
 
-                self.SendTransform2tf(p = self.uv_to_XY(self.lwx, self.lwy, self.wristdepth_L))
+                self.SendTransform2tf(p = self.uv_to_XY(self.nosex, self.nosey, self.nosedepth), child_frame="Nose")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.lwx, self.lwy, self.wristdepth_L), child_frame="Left_Hand")
+                self.SendTransform2tf(p = self.uv_to_XY(self.rwx, self.rwy, self.wristdepth_R), child_frame="Right_Hand")
+                
+                self.SendTransform2tf(p = self.uv_to_XY(self.shoulderLx, self.shoulderLy, self.shoulderdepthL), child_frame="L_shoulder")
+                self.SendTransform2tf(p = self.uv_to_XY(self.shoulderRx, self.shoulderRy, self.shoulderdepthR), child_frame="R_shoulder")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.hipLx, self.hipLy, self.hipdepthL), child_frame="L_hip")
+                self.SendTransform2tf(p = self.uv_to_XY(self.hipRx, self.hipRy, self.hipdepthR), child_frame="R_hip")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.elbowLx, self.elbowLy, self.elbowdepthL), child_frame="L_elbow")
+                self.SendTransform2tf(p = self.uv_to_XY(self.elbowRx, self.elbowRy, self.elbowdepthR), child_frame="R_elbow")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.kneeRx, self.kneeRy, self.kneedepthR), child_frame="R_knee")
+                self.SendTransform2tf(p = self.uv_to_XY(self.kneeLx, self.kneeLy, self.kneedepthL), child_frame="L_knee")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.ankleRx, self.ankleRy, self.ankledepthR), child_frame="R_ankle")
+                self.SendTransform2tf(p = self.uv_to_XY(self.ankleLx, self.ankleLy, self.ankledepthL), child_frame="L_ankle")
+
+
+                #self.SendTransform2tf(p = self.pixToMetres(self.lwx, self.lwy, self.wristdepth_L), child_frame="Left_Hand_mine")
+                #self.SendTransform2tf(p = self.pixToMetres(self.rwx, self.rwy, self.wristdepth_R), child_frame="Right_Hand_mine")
+
+                
 
                 # depth ---> Z
                 # lwx/rwx -> X
+
                 # lwy/rwy -> Y
 
                 if self.args.circles == True:
@@ -478,7 +543,7 @@ class SingleImageAlphaPose():
 
             self.pub_DEPTH.publish(self.out_DEPTH)
 
-    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
+    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="human_pose"):
         
         self.transmsg.header.stamp = rospy.Time.now()
         self.transmsg.header.frame_id = parent_frame
@@ -497,15 +562,18 @@ class SingleImageAlphaPose():
         self.pub_TRANS_POSE.sendTransform(self.transmsg)
 
     def depth_remap(self, depth):
-        self.adj_DEPTH = 65536- depth
+        """ self.adj_DEPTH = 65536- depth
         self.range_16b = 65536
         self.range_depth = 300 - 3
         self.remapped = (depth * self.range_depth) / self.range_16b 
 
         #return self.remapped
-        return self.remapped/20 + 0.3
+        return self.remapped/20 + 0.3 """
+        percentageOf16b = depth/3000
+        percentageOf3m = percentageOf16b * 3
+        return percentageOf3m
     
-    def uv_to_XY(self, u,v, z):
+    def uv_to_XY(self, u,v,z):
         """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
         fx = 607.167297
         fy = 608.291809
@@ -516,7 +584,22 @@ class SingleImageAlphaPose():
         X = (z * x)
         Y = (z * y)
         Z = z
-        return [X, Y, Z]
+        return [X, Y, Z]     
+
+    def pixToMetres(self, u,v,z):
+        f = 1.93 #m
+        K_u = 640/3.855 #px/m
+        K_v = 480/2.919 #px/m
+
+        X = -(z/f)*K_u*u
+        Y = -(z/f)*K_v*v
+        Z = z
+
+        return [X/10000, Y/10000, Z/10]
+
+
+
+    
     def grbage(self):
         pass
     
