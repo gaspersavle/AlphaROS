@@ -517,7 +517,9 @@ class SingleImageAlphaPose():
         Y = (z * y)
         Z = z
         return [X, Y, Z]
-
+    def grbage(self):
+        pass
+    
     def enablePose_CB(self, req):
         state = req.data
         if state:
