@@ -11,9 +11,26 @@ import platform
 import sys
 import math
 import time
+import statistics as stat
+import yaml
+import sys
+#from helpers import path
 
 import cv2
 import numpy as np
+
+##################################################################
+import rospy
+import tf2_ros
+import tf2_geometry_msgs
+import geometry_msgs.msg
+from std_msgs.msg import Bool
+from std_srvs.srv import SetBool
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge   
+import colorama
+from colorama import Fore, Style
+##################################################################
 
 from alphapose.utils.transforms import get_func_heatmap_to_coord
 from alphapose.utils.pPose_nms import pose_nms
@@ -56,6 +73,10 @@ parser.add_argument('--debug', default=False, action='store_true',
                     help='print detail information')
 parser.add_argument('--vis_fast', dest='vis_fast',
                     help='use fast rendering', action='store_true', default=False)
+parser.add_argument('--circles', default = False, action = 'store_true',
+                    help='draw circles arround wrists')
+parser.add_argument('--depth', default = False, action = 'store_true',
+                    help='display wrist proximity')
 """----------------------------- Tracking options -----------------------------"""
 parser.add_argument('--pose_flow', dest='pose_flow',
                     help='track humans in video with PoseFlow', action='store_true', default=False)
@@ -290,12 +311,18 @@ class DataWriter():
     def save(self, boxes, scores, ids, hm_data, cropped_boxes, orig_img, im_name):
         self.item = (boxes, scores, ids, hm_data, cropped_boxes, orig_img, im_name)
 
+
 class SingleImageAlphaPose():
     def __init__(self, args, cfg):
         self.args = args
         self.cfg = cfg
+        self.image = None
+        self.enablePose = False
+        self.poseNode = '/realsense/alphapose/enable'
+        rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
+        self.create_service_client()
+        #self.config = update_config(config_file='config.yaml')
 
-        # Load pose model
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
 
         print(f'Loading pose model from {args.checkpoint}...')
@@ -306,6 +333,295 @@ class SingleImageAlphaPose():
         self.pose_model.eval()
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
+        #init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
+
+        ####################################################################################
+        #init rospy
+        rospy.init_node("vision", anonymous = True)
+
+        self.pub_TRANS_POSE = tf2_ros.TransformBroadcaster()
+        self.transmsg = geometry_msgs.msg.TransformStamped()
+
+        self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
+        self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        #self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw/compressedDepth", Image, self.depth_CB)
+        self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
+        self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
+        rospy.spin()
+        ####################################################################################
+
+    def pose_CB(self, input):
+        if self.enablePose:
+            self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+            #self.img_POSE = cv2.resize(self.img_POSE, ())
+            self.pose = self.process("demo", self.img_POSE)
+            self.vis_POSE = self.vis(self.img_POSE, self.pose)
+
+            if self.pose != None:
+                self.keypoints = self.pose['result'][0]['keypoints']
+
+                self.secs = str(input.header.stamp)[:10]
+                self.nsecs = str(input.header.stamp)[10:]
+
+                #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+                self.R_ankle = self.keypoints[16]
+                self.L_ankle = self.keypoints[15]
+
+                self.R_knee = self.keypoints[14]
+                self.L_knee = self.keypoints[13]
+
+                self.R_hip= self.keypoints[12]
+                self.L_hip= self.keypoints[11]
+
+                self.R_wrist = self.keypoints[10]
+                self.L_wrist = self.keypoints[9]
+
+                self.R_elbow = self.keypoints[8]
+                self.L_elbow = self.keypoints[7]
+
+                self.R_shoulder = self.keypoints[6]
+                self.L_shoulder = self.keypoints[5]
+
+                self.R_ear = self.keypoints[4]
+                self.L_ear = self.keypoints[3]
+
+                self.R_eye = self.keypoints[2]
+                self.L_eye = self.keypoints[1]
+                self.nose = self.keypoints[0]
+
+                #----------------------------------------------------------------------------------------------
+                self.nosex, self.nosey = int(self.nose[0]), int(self.nose[1])
+
+                self.lwx, self.lwy = int(self.L_wrist[0]), int(self.L_wrist[1])
+                self.rwx, self.rwy = int(self.R_wrist[0]), int(self.R_wrist[1])
+
+                self.shoulderLx, self.shoulderLy = int(self.L_shoulder[0]), int(self.L_shoulder[1])
+                self.shoulderRx, self.shoulderRy = int(self.R_shoulder[0]), int(self.R_shoulder[1])
+
+                self.hipRx, self.hipRy = int(self.R_hip[0]), int(self.R_hip[1])
+                self.hipLx, self.hipLy = int(self.L_hip[0]), int(self.L_hip[1])
+
+                self.elbowRx, self.elbowRy = int(self.R_elbow[0]), int(self.R_elbow[1])
+                self.elbowLx, self.elbowLy = int(self.L_elbow[0]), int(self.L_elbow[1])
+
+                self.kneeRx, self.kneeRy = int(self.R_knee[0]), int(self.R_knee[1])
+                self.kneeLx, self.kneeLy = int(self.L_knee[0]), int(self.L_knee[1])
+
+                self.ankleRx, self.ankleRy = int(self.R_ankle[0]), int(self.R_ankle[1])
+                self.ankleLx, self.ankleLy = int(self.L_ankle[0]), int(self.L_ankle[1])
+
+
+
+                #print(f"{Fore.GREEN} R.x: {self.R_wrist[0]} | R.y: {self.R_wrist[1]}")
+                #print(f"{Fore.GREEN} L.x: {self.L_wrist[0]} | L.y: {self.L_wrist[1]}")
+                #----------------------------------------------------------------------------------------------
+
+
+                if self.args.circles == True:
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                    
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.maxdepth_loc[1], self.maxdepth_loc[0]), radius=10, color=(0, 255, 0), thickness=2)
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.mindepth_loc[1], self.mindepth_loc[0]), radius=10, color=(255, 0, 0), thickness=2)
+
+                if self.args.depth == True:
+                    self.vis_POSE = cv2.putText(self.vis_POSE,
+                    text=self.rounddepth_L,
+                    org=(self.lwx-60, self.lwy),
+                    fontFace=cv2.FONT_HERSHEY_DUPLEX,
+                    fontScale=0.5,
+                    color=(0, 128, 128),
+                    thickness=1)
+
+                    self.vis_POSE = cv2.putText(self.vis_POSE,
+                    text=self.rounddepth_R,
+                    org=(self.rwx+30, self.rwy),
+                    fontFace=cv2.FONT_HERSHEY_DUPLEX,
+                    fontScale=0.5,
+                    color=(0, 128, 128),
+                    thickness=1)
+                
+                    #pass
+
+                
+
+                #print(f"Kolicina tock: {len(self.keypoints)}")
+                #print(f"D: {self.R_wrist} | L: {self.L_wrist}")
+            else:
+                print(f"{Fore.RED} No pose detected...")
+
+            self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
+            self.pub_POSE.publish(self.out_POSE)
+
+    def depth_CB(self, input):
+
+        if self.enablePose:
+            self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
+            self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
+            #print(self.img_blur_DEPTH.shape)
+            #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
+            #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
+            
+            #print(f"{Fore.YELLOW} {self.img_DEPTH}")
+            if self.pose != None:
+
+                self.nosedepth = self.depth_remap(self.img_blur_DEPTH[self.nosey,self.nosex])
+
+                self.wristdepth_R = self.depth_remap(self.img_blur_DEPTH[self.rwy,self.rwx])
+                self.wristdepth_L = self.depth_remap(self.img_blur_DEPTH[self.lwy,self.lwx])
+                
+                self.shoulderdepthL = self.depth_remap(self.img_blur_DEPTH[self.shoulderLy,self.shoulderLx])
+                self.shoulderdepthR = self.depth_remap(self.img_blur_DEPTH[self.shoulderRy,self.shoulderRx])
+
+                self.hipdepthL = self.depth_remap(self.img_blur_DEPTH[self.hipLy,self.hipLx])
+                self.hipdepthR = self.depth_remap(self.img_blur_DEPTH[self.hipRy,self.hipRx])
+
+                self.kneedepthL = self.depth_remap(self.img_blur_DEPTH[self.kneeLy, self.kneeLx])
+                self.kneedepthR = self.depth_remap(self.img_blur_DEPTH[self.kneeRy, self.kneeRx])
+
+                self.elbowdepthL = self.depth_remap(self.img_blur_DEPTH[self.elbowLy, self.elbowLx])
+                self.elbowdepthR = self.depth_remap(self.img_blur_DEPTH[self.elbowRy, self.elbowRx])
+
+                self.ankledepthL = self.depth_remap(self.img_blur_DEPTH[self.ankleLy, self.ankleLx])
+                self.ankledepthR = self.depth_remap(self.img_blur_DEPTH[self.ankleRy, self.ankleRx])
+
+                #self.wristdepth_R = self.img_DEPTH[self.rwx,self.rwy]
+                #self.wristdepth_L = self.img_DEPTH[self.lwx,self.lwy]
+
+                print(f"{Fore.CYAN}RIGHT:\nDEPTH: {self.wristdepth_R} | LOCATION: {self.R_wrist}")
+                print(f"{Fore.MAGENTA}LEFT:\nDEPTH: {self.wristdepth_L} | LOCATION: {self.L_wrist}")
+                #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
+                
+                self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
+
+
+                self.rounddepth_L = str(self.wristdepth_L)[:4]
+                self.rounddepth_R = str(self.wristdepth_R)[:4]
+
+                print(f"{Fore.GREEN} Max depth: {self.img_blur_DEPTH[self.maxdepth_loc]} {Fore.RED} | Min depth: {self.img_blur_DEPTH[self.mindepth_loc]}")
+                #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.lwx, self.lwy]} | RAW right: {self.img_blur_DEPTH[self.rwx, self.rwy]}")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.nosex, self.nosey, self.nosedepth), child_frame="Nose")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.lwx, self.lwy, self.wristdepth_L), child_frame="Left_Hand")
+                self.SendTransform2tf(p = self.uv_to_XY(self.rwx, self.rwy, self.wristdepth_R), child_frame="Right_Hand")
+                
+                self.SendTransform2tf(p = self.uv_to_XY(self.shoulderLx, self.shoulderLy, self.shoulderdepthL), child_frame="L_shoulder")
+                self.SendTransform2tf(p = self.uv_to_XY(self.shoulderRx, self.shoulderRy, self.shoulderdepthR), child_frame="R_shoulder")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.hipLx, self.hipLy, self.hipdepthL), child_frame="L_hip")
+                self.SendTransform2tf(p = self.uv_to_XY(self.hipRx, self.hipRy, self.hipdepthR), child_frame="R_hip")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.elbowLx, self.elbowLy, self.elbowdepthL), child_frame="L_elbow")
+                self.SendTransform2tf(p = self.uv_to_XY(self.elbowRx, self.elbowRy, self.elbowdepthR), child_frame="R_elbow")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.kneeRx, self.kneeRy, self.kneedepthR), child_frame="R_knee")
+                self.SendTransform2tf(p = self.uv_to_XY(self.kneeLx, self.kneeLy, self.kneedepthL), child_frame="L_knee")
+
+                self.SendTransform2tf(p = self.uv_to_XY(self.ankleRx, self.ankleRy, self.ankledepthR), child_frame="R_ankle")
+                self.SendTransform2tf(p = self.uv_to_XY(self.ankleLx, self.ankleLy, self.ankledepthL), child_frame="L_ankle")
+
+
+                #self.SendTransform2tf(p = self.pixToMetres(self.lwx, self.lwy, self.wristdepth_L), child_frame="Left_Hand_mine")
+                #self.SendTransform2tf(p = self.pixToMetres(self.rwx, self.rwy, self.wristdepth_R), child_frame="Right_Hand_mine")
+
+                
+
+                # depth ---> Z
+                # lwx/rwx -> X
+
+                # lwy/rwy -> Y
+
+                if self.args.circles == True:
+                    self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.lwx, self.lwy), radius=10, color=(255, 0, 255), thickness=2)
+                    self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.rwx, self.rwy), radius=10, color=(255, 0, 255), thickness=2)
+                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
+
+            else:
+                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
+
+            self.pub_DEPTH.publish(self.out_DEPTH)
+
+    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="human_pose"):
+        
+        self.transmsg.header.stamp = rospy.Time.now()
+        self.transmsg.header.frame_id = parent_frame
+
+        self.transmsg.child_frame_id = child_frame
+
+        self.transmsg.transform.translation.x = p[0]
+        self.transmsg.transform.translation.y = p[1]
+        self.transmsg.transform.translation.z = p[2]
+
+        self.transmsg.transform.rotation.w = q[0]
+        self.transmsg.transform.rotation.x = q[1]
+        self.transmsg.transform.rotation.y = q[2]
+        self.transmsg.transform.rotation.z = q[3]
+
+        self.pub_TRANS_POSE.sendTransform(self.transmsg)
+
+    def depth_remap(self, depth):
+        """ self.adj_DEPTH = 65536- depth
+        self.range_16b = 65536
+        self.range_depth = 300 - 3
+        self.remapped = (depth * self.range_depth) / self.range_16b 
+
+        #return self.remapped
+        return self.remapped/20 + 0.3 """
+        percentageOf16b = depth/3000
+        percentageOf3m = percentageOf16b * 3
+        return percentageOf3m
+    
+    def uv_to_XY(self, u,v,z):
+        """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
+        fx = 607.167297
+        fy = 608.291809
+
+        x = (u - (326.998790)) / fx
+        y = (v - (244.887363)) / fy
+
+        X = (z * x)
+        Y = (z * y)
+        Z = z
+        return [X, Y, Z]     
+
+    def pixToMetres(self, u,v,z):
+        f = 1.93 #m
+        K_u = 640/3.855 #px/m
+        K_v = 480/2.919 #px/m
+
+        X = -(z/f)*K_u*u
+        Y = -(z/f)*K_v*v
+        Z = z
+
+        return [X/10000, Y/10000, Z/10]
+
+
+
+    
+    def grbage(self):
+        pass
+    
+    def enablePose_CB(self, req):
+        state = req.data
+        if state:
+            print("AlphaPose: starting...")
+            self.enablePose = True
+            msg = self.poseNode + " started."
+        else:
+            print("AlphaPose: stopping...")
+            self.enablePose = False
+            msg = self.poseNode + " stopped."
+        return True, msg
+
+    def create_service_client(self):
+        try:
+            print("waiting for service:" + self.poseNode)
+            rospy.wait_for_service(self.poseNode, 2) # 2 seconds
+        except rospy.ROSException as e:
+            print("Couldn't find to service! " + self.poseNode)
+        self.camera_service = rospy.ServiceProxy(self.poseNode, SetBool)
 
     def process(self, im_name, image):
         # Init data writer
@@ -362,13 +678,11 @@ class SingleImageAlphaPose():
                     'det time: {dt:.4f} | pose time: {pt:.4f} | post processing: {pn:.4f}'.format(
                         dt=np.mean(runtime_profile['dt']), pt=np.mean(runtime_profile['pt']), pn=np.mean(runtime_profile['pn']))
                 )
-            print('===========================> Finish Model Running.')
         except Exception as e:
             print(repr(e))
             print('An error as above occurs when processing the images, please check it')
             pass
-        except KeyboardInterrupt:
-            print('===========================> Finish Model Running.')
+
 
         return pose
 
@@ -385,26 +699,26 @@ class SingleImageAlphaPose():
         write_json(final_result, outputpath, form=form, for_eval=for_eval)
         print("Results have been written to json.")
 
-def example():
-    outputpath = "examples/res/"
-    if not os.path.exists(outputpath + 'vis'):
-        os.mkdir(outputpath + '/vis')
+    def parse_calib_yaml(self, fn):
+        """Parse camera calibration file (which is hand-made using ros camera_calibration) """
 
-    demo = SingleImageAlphaPose(args, cfg)
-    im_name = args.inputimg    # the path to the target image
-    image = cv2.cvtColor(cv2.imread(im_name), cv2.COLOR_BGR2RGB)
-    pose = demo.process(im_name, image)
-    img = demo.getImg()     # or you can just use: img = cv2.imread(image)
-    img = demo.vis(img, pose)   # visulize the pose result
-    cv2.imwrite(os.path.join(outputpath, 'vis', os.path.basename(im_name)), img)
+        with open(fn, "r") as stream:
+            try:
+                data = yaml.safe_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
+        data = data['Realsense']
+        init_p = data['init_robot_pos']
+        #print(data)
+        w  = data['coeffs'][0]['width']
+        h = data['coeffs'][0]['height']
     
-    # if you want to vis the img:
-    # cv2.imshow("AlphaPose Demo", img)
-    # cv2.waitKey(30)
+        D = np.array(data['coeffs'][0]['D'])
+        K = np.array(data['coeffs'][0]['K']).reshape(3,3)
+        P = np.array(data['coeffs'][0]['P']).reshape(3,4)
+    
+        return init_p, D, K, P, w, h
 
-    # write the result to json:
-    result = [pose]
-    demo.writeJson(result, outputpath, form=args.format, for_eval=args.eval)
 
 if __name__ == "__main__":
-    example()
+    SingleImageAlphaPose(args, cfg)

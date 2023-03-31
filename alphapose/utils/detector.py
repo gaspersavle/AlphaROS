@@ -98,6 +98,7 @@ class DetectionLoader():
         else:
             p = mp.Process(target=target, args=())
         # p.daemon = True
+        print("Started worker...")
         p.start()
         return p
 
