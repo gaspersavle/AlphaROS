@@ -422,7 +422,7 @@ class SingleImageAlphaPose():
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
 
-        self.rospy_init
+        self.rospy_init()
 
     def rospy_init(self):
 
