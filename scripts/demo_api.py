@@ -485,17 +485,17 @@ class SingleImageAlphaPose():
                     trans_joint_xyz = self.transToHead_xyz(joint['x'], joint['y'], joint['z'])
                     if joint['cf'] != None:
                         if key == 'nose':
-                            self.SendTransform2tf(p = self.transToHead_xyz(joint['x'],joint['y'],joint['z']),child_frame=joint['cf'])
+                            self.SendTransform2tf(p = self.uv_to_XY(joint['x'],joint['y'],joint['z']),child_frame=joint['cf'])
                         else:
                             self.SendTransform2tf(p=trans_joint_xyz, parent_frame='head_default', child_frame=joint['cf'])
-                    """ if joint['pitch_f'] != None:
+                    if joint['pitch_f'] != None:
                         lowerjoint = self.body[joint['lower_j']]
                         trans_joint_q = self.transToHead_PY([joint['x'], joint['y'], joint['z']], [lowerjoint['x'], lowerjoint['y'], lowerjoint['z']])
                         self.SendTransform2tf(q=trans_joint_q, parent_frame='head_default', child_frame=joint['pitch_f'])
                     if joint['yaw_f'] != None:
                         lowerjoint = self.body[joint['lower_j']]
                         trans_joint_q = self.transToHead_PY([joint['x'], joint['y'], joint['z']], [lowerjoint['x'], lowerjoint['y'], lowerjoint['z']])
-                        self.SendTransform2tf(q=trans_joint_q, parent_frame='head_default', child_frame=joint['pitch_f']) """
+                        self.SendTransform2tf(q=trans_joint_q, parent_frame='head_default', child_frame=joint['yaw_f'])
 
        
 
@@ -553,17 +553,16 @@ class SingleImageAlphaPose():
         X = (z * x)
         Y = (z * y)
         Z = z
-        return [X*2, Y*2, Z*2]
+        return [X, Y, Z]
 
     def transToHead_xyz(self, joint_x, joint_y, joint_z):
         nose = self.body['nose']
-
         Phead = self.uv_to_XY(nose['x'], nose['y'], nose['z'])
         #print(f"{Fore.BLUE}Phead: {Phead}")
         Thead = np.eye(4)
         Thead[0:3, -1] = Phead
 
-        P = self.uv_to_XY(joint_x, joint_y, nose['z'])
+        P = self.uv_to_XY(joint_x, joint_y, joint_z)
         transmat = np.eye(4)
         transmat[0:3, -1] = P
 
@@ -573,6 +572,30 @@ class SingleImageAlphaPose():
 
 
         return [res[0,3], res[1,3], res[2,3]]
+    """ def transToHead_xyz(self, joint_x, joint_y, joint_z):
+        nose = self.body['nose']
+
+        nosedim = self.uv_to_XY(nose['x'], nose['y'], nose['z'])
+        jointdim = self.uv_to_XY(joint_x, joint_y, joint_z)
+        dt = np.matrix([[1, 0, 0, nosedim[0]-jointdim[0]],
+                        [0, 0, 1, nosedim[1]-jointdim[1]],
+                        [0, 1, 0, nosedim[2]-jointdim[2]],
+                        [0, 0, 0, 1]])
+
+        jointposit = np.matrix([[jointdim[0]],
+                                [jointdim[1]],
+                                [jointdim[2]],
+                                [1]])
+
+        P = self.uv_to_XY(joint_x, joint_y, joint_z/2)
+        transmat = np.eye(4)
+        #print(P)
+        transmat[0:3, 3] = P
+
+        #dt = np.linalg.solve(Thead, transmat)
+        res = dt @ jointposit
+        print(res)
+        return [res[0,0], res[1,0], res[2,0]] """
 
     def transToHead_PY(self, joint_1:list, joint_2:list):
 
@@ -588,9 +611,6 @@ class SingleImageAlphaPose():
 
 
         return [1, res[0,0], res[1,1], res[2,2]]
-        
-    def grbage(self):
-        pass
     
     def enablePose_CB(self, req):
         state = req.data
