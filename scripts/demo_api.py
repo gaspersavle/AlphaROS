@@ -412,60 +412,9 @@ class SingleImageAlphaPose():
                             'L_eye': {'x': int(self.keypoints[1][0]), 'y': int(self.keypoints[1][1]), 'z': None, 'cf': None,
                                 'roll_f': None, 'pitch_f': None, 'yaw_f': None},
 
-                            'nose': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'cf': None,
+                            'nose': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'cf': 'head_default',
                                 'roll_f': None, 'pitch_f': None, 'yaw_f': None}}
-                """ self.R_ankle = self.keypoints[16]
-                self.L_ankle = self.keypoints[15]
 
-                self.R_knee = self.keypoints[14]
-                self.L_knee = self.keypoints[13]
-
-                self.R_hip= self.keypoints[12]
-                self.L_hip= self.keypoints[11]
-
-                self.R_wrist = self.keypoints[10]
-                self.L_wrist = self.keypoints[9]
-
-                self.R_elbow = self.keypoints[8]
-                self.L_elbow = self.keypoints[7]
-
-                self.R_shoulder = self.keypoints[6]
-                self.L_shoulder = self.keypoints[5]
-
-                self.R_ear = self.keypoints[4]
-                self.L_ear = self.keypoints[3]
-
-                self.R_eye = self.keypoints[2]
-                self.L_eye = self.keypoints[1]
-                self.nose = self.keypoints[0]
-
-                #----------------------------------------------------------------------------------------------
-                self.nose_x, self.nose_y = int(self.nose[0]), int(self.nose[1])
-
-                self.body['L_wrist']['x'], self.body['L_wrist']['y'] = int(self.L_wrist[0]), int(self.L_wrist[1])
-                self.body['R_wrist']['x'], self.body['R_wrist']['y'] = int(self.R_wrist[0]), int(self.R_wrist[1])
-
-                self.L_shoulder_x, self.L_shoulder_y = int(self.L_shoulder[0]), int(self.L_shoulder[1])
-                self.R_shoulder_x, self.R_shoulder_y = int(self.R_shoulder[0]), int(self.R_shoulder[1])
-
-                self.L_hip_x, self.L_hip_y = int(self.L_hip[0]), int(self.L_hip[1])
-                self.R_hip_x, self.R_hip_y = int(self.R_hip[0]), int(self.R_hip[1])
-
-                self.L_elbow_x, self.L_elbow_y = int(self.L_elbow[0]), int(self.L_elbow[1])
-                self.R_elbow_x, self.R_elbow_y = int(self.R_elbow[0]), int(self.R_elbow[1])
-
-                self.L_knee_x, self.L_knee_y = int(self.L_knee[0]), int(self.L_knee[1])
-                self.R_knee_x, self.R_knee_y = int(self.R_knee[0]), int(self.R_knee[1])
-
-                self.L_ankle_x, self.L_ankle_y = int(self.L_ankle[0]), int(self.L_ankle[1])
-                self.R_ankle_x, self.R_ankle_y = int(self.R_ankle[0]), int(self.R_ankle[1]) """
-
-                #-----------------------------------------------------------------------------------------------
-                
-
-
-                #print(f"{Fore.GREEN} R.x: {self.R_wrist[0]} | R.y: {self.R_wrist[1]}")
-                #print(f"{Fore.GREEN} L.x: {self.L_wrist[0]} | L.y: {self.L_wrist[1]}")
 
 
                 if self.args.circles == True:
@@ -514,31 +463,10 @@ class SingleImageAlphaPose():
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
             if self.pose != None:
-                for joint in self.body:
+                for key, joint in self.body.items():
                     joint['z'] = self.depth_remap(self.img_blur_DEPTH[joint['y'], joint['x']])
+                    #print(joint['cf'])
 
-                """ self.nose_z = self.depth_remap(self.img_blur_DEPTH[self.nose_y,self.nose_x])
-
-                self.R_wrist_z = self.depth_remap(self.img_blur_DEPTH[self.body['R_wrist']['y'],self.body['R_wrist']['x']])
-                self.L_wrist_z = self.depth_remap(self.img_blur_DEPTH[self.body['L_wrist']['y'],self.body['L_wrist']['x']])
-
-                self.L_shoulder_z = self.depth_remap(self.img_blur_DEPTH[self.L_shoulder_y,self.L_shoulder_x])
-                self.R_shoulder_z = self.depth_remap(self.img_blur_DEPTH[self.R_shoulder_y,self.R_shoulder_x])
-
-                self.L_hip_z = self.depth_remap(self.img_blur_DEPTH[self.L_hip_y,self.L_hip_x])
-                self.R_hip_z = self.depth_remap(self.img_blur_DEPTH[self.R_hip_y,self.R_hip_x])
-
-                self.L_knee_z = self.depth_remap(self.img_blur_DEPTH[self.L_knee_y, self.L_knee_x])
-                self.R_knee_z = self.depth_remap(self.img_blur_DEPTH[self.R_knee_y, self.R_knee_x])
-
-                self.L_elbow_z = self.depth_remap(self.img_blur_DEPTH[self.L_elbow_y, self.L_elbow_x])
-                self.R_elbow_z = self.depth_remap(self.img_blur_DEPTH[self.R_elbow_y, self.R_elbow_x])
-
-                self.L_ankle_z = self.depth_remap(self.img_blur_DEPTH[self.L_ankle_y, self.L_ankle_x])
-                self.R_ankle_z = self.depth_remap(self.img_blur_DEPTH[self.R_ankle_y, self.R_ankle_x]) """
-
-                #self.wristdepth_R = self.img_DEPTH[self.body['R_wrist']['x'],self.body['R_wrist']['y']]
-                #self.wristdepth_L = self.img_DEPTH[self.body['L_wrist']['x'],self.body['L_wrist']['y']]
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
@@ -553,79 +481,23 @@ class SingleImageAlphaPose():
                 print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
                 #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
                 
-                for joint in self.body:
+                for key, joint in self.body.items():
                     trans_joint_xyz = self.transToHead_xyz(joint['x'], joint['y'], joint['z'])
                     if joint['cf'] != None:
-                        if joint == 'nose':
-                            self.SendTransform2tf(p = [joint['x'],joint['y'],joint['z']],child_frame=joint['cf'])
+                        if key == 'nose':
+                            self.SendTransform2tf(p = self.transToHead_xyz(joint['x'],joint['y'],joint['z']),child_frame=joint['cf'])
                         else:
                             self.SendTransform2tf(p=trans_joint_xyz, parent_frame='head_default', child_frame=joint['cf'])
-                    if joint['pitch_f'] != None:
+                    """ if joint['pitch_f'] != None:
                         lowerjoint = self.body[joint['lower_j']]
                         trans_joint_q = self.transToHead_PY([joint['x'], joint['y'], joint['z']], [lowerjoint['x'], lowerjoint['y'], lowerjoint['z']])
                         self.SendTransform2tf(q=trans_joint_q, parent_frame='head_default', child_frame=joint['pitch_f'])
+                    if joint['yaw_f'] != None:
+                        lowerjoint = self.body[joint['lower_j']]
+                        trans_joint_q = self.transToHead_PY([joint['x'], joint['y'], joint['z']], [lowerjoint['x'], lowerjoint['y'], lowerjoint['z']])
+                        self.SendTransform2tf(q=trans_joint_q, parent_frame='head_default', child_frame=joint['pitch_f']) """
 
-
-                """ self.SendTransform2tf(p = self.uv_to_XY(self.nose_x, self.nose_y, self.nose_z), child_frame='head_default')
-
-                self.trans_Lwrist = self.transToHead(self.body['L_wrist']['x'], self.body['L_wrist']['y'], self.L_wrist_z)
-                self.trans_Rwrist = self.transToHead(self.body['R_wrist']['x'], self.body['R_wrist']['y'], self.R_wrist_z)
-                self.SendTransform2tf(p=self.trans_Lwrist, parent_frame='head_default', child_frame='l_wrist_default')
-                self.SendTransform2tf(p=self.trans_Rwrist, parent_frame='head_default', child_frame='r_wrist_default')
-
-                self.trans_Lelbow = self.transToHead(self.L_elbow_x, self.L_elbow_y, self.L_elbow_z)
-                self.trans_Relbow = self.transToHead(self.R_elbow_x, self.R_elbow_y, self.R_elbow_z)
-                self.SendTransform2tf(p=self.trans_Lelbow, parent_frame='head_default', child_frame='l_elbow_default')
-                self.SendTransform2tf(p=self.trans_Relbow, parent_frame='head_default', child_frame='r_elbow_default')
-
-                self.trans_Lshoulder = self.transToHead(self.L_shoulder_x, self.L_shoulder_y, self.L_shoulder_z)
-                self.trans_Rshoulder = self.transToHead(self.R_shoulder_x, self.R_shoulder_y, self.R_shoulder_z)
-                self.SendTransform2tf(p=self.trans_Lshoulder, parent_frame='head_default', child_frame='l_shoulder_default')
-                self.SendTransform2tf(p=self.trans_Rshoulder, parent_frame='head_default', child_frame='r_shoulder_default')
-
-                self.trans_Lhip = self.transToHead(self.L_hip_x, self.L_hip_y, self.L_hip_z)
-                self.trans_Rhip = self.transToHead(self.R_hip_x, self.R_hip_y, self.R_hip_z)
-                self.SendTransform2tf(p=self.trans_Lhip, parent_frame='head_default', child_frame='l_hip_default')
-                self.SendTransform2tf(p=self.trans_Rhip, parent_frame='head_default', child_frame='r_hip_default')
-
-                self.trans_Lknee = self.transToHead(self.L_knee_x, self.L_knee_y, self.L_knee_z)
-                self.trans_Rknee = self.transToHead(self.R_knee_x, self.R_knee_y, self.R_knee_z)
-                self.SendTransform2tf(p=self.trans_Lknee, parent_frame='head_default', child_frame='l_knee_default')
-                self.SendTransform2tf(p=self.trans_Rknee, parent_frame='head_default', child_frame='r_knee_default')
-
-                self.trans_Lankle = self.transToHead(self.L_ankle_x, self.L_ankle_y, self.L_ankle_z)
-                self.trans_Rankle = self.transToHead(self.R_ankle_x, self.R_ankle_y, self.R_ankle_z)
-                self.SendTransform2tf(p=self.trans_Lankle, parent_frame='head_default', child_frame='l_ankle_default')
-                self.SendTransform2tf(p=self.trans_Rankle, parent_frame='head_default', child_frame='r_ankle_default') """
-
-                
-
-                print(f"{Fore.LIGHTMAGENTA_EX} Result: {self.trans_Lwrist}")
-
-                """ self.SendTransform2tf(p = self.uv_to_XY(self.nose_x, self.nose_y, self.nose_z), child_frame='head_default')
-
-                self.SendTransform2tf(p = self.uv_to_XY(self.body['L_wrist']['x'], self.body['L_wrist']['y'], self.L_wrist_z), child_frame='L_wrist_default')
-                self.SendTransform2tf(p = self.uv_to_XY(self.body['R_wrist']['x'], self.body['R_wrist']['y'], self.R_wrist_z), child_frame='r_wrist_default')
-
-                self.SendTransform2tf(p = self.uv_to_XY(self.L_shoulder_x, self.L_shoulder_y, self.L_shoulder_z), child_frame='l_shoulder_default')
-                self.SendTransform2tf(p = self.uv_to_XY(self.R_shoulder_x, self.R_shoulder_y, self.R_shoulder_z), child_frame='r_shoulder_default')
-
-                self.SendTransform2tf(p = self.uv_to_XY(self.L_hip_x, self.L_hip_y, self.L_hip_z), child_frame='l_hip_default')
-                self.SendTransform2tf(p = self.uv_to_XY(self.R_hip_x, self.R_hip_y, self.R_hip_z), child_frame='r_hip_default')
-
-                self.SendTransform2tf(p = self.uv_to_XY(self.L_elbow_x, self.L_elbow_y, self.L_elbow_z), child_frame='l_elbow_default')
-                self.SendTransform2tf(p = self.uv_to_XY(self.R_elbow_x, self.R_elbow_y, self.R_elbow_z), child_frame='r_elbow_default')
-
-                self.SendTransform2tf(p = self.uv_to_XY(self.L_knee_x, self.L_knee_y, self.L_knee_z), child_frame='l_knee_default')
-                self.SendTransform2tf(p = self.uv_to_XY(self.R_knee_x, self.R_knee_y, self.R_knee_z), child_frame='r_knee_default')
-
-                self.SendTransform2tf(p = self.uv_to_XY(self.L_ankle_x, self.L_ankle_y, self.L_ankle_z), child_frame='l_ankle_default')
-                self.SendTransform2tf(p = self.uv_to_XY(self.R_ankle_x, self.R_ankle_y, self.R_ankle_z), child_frame='l_ankle_default')
-                 """
-
-                # depth ---> Z
-                # lwx/rwx -> X
-                # lwy/rwy -> Y
+       
 
                 if self.args.circles == True:
                     self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
@@ -681,20 +553,23 @@ class SingleImageAlphaPose():
         X = (z * x)
         Y = (z * y)
         Z = z
-        return [X, Y, Z]
+        return [X*2, Y*2, Z*2]
 
     def transToHead_xyz(self, joint_x, joint_y, joint_z):
+        nose = self.body['nose']
 
-        Phead = self.uv_to_XY(self.nose_x, self.nose_y, self.nose_z)
+        Phead = self.uv_to_XY(nose['x'], nose['y'], nose['z'])
+        #print(f"{Fore.BLUE}Phead: {Phead}")
         Thead = np.eye(4)
         Thead[0:3, -1] = Phead
 
-        P = self.uv_to_XY(joint_x, joint_y, joint_z)
+        P = self.uv_to_XY(joint_x, joint_y, nose['z'])
         transmat = np.eye(4)
         transmat[0:3, -1] = P
 
         dt = np.linalg.solve(Thead, transmat)
         res = Thead @ dt
+        #print(res)
 
 
         return [res[0,3], res[1,3], res[2,3]]
