@@ -342,6 +342,8 @@ class SingleImageAlphaPose():
 
         self.pub_TRANS_POSE = tf2_ros.TransformBroadcaster()
         self.transmsg = geometry_msgs.msg.TransformStamped()
+        self.tfbuffer = tf2_ros.Buffer()
+        self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
 
         self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
@@ -410,23 +412,23 @@ class SingleImageAlphaPose():
                             'L_elbow': {'x': int(self.keypoints[7][0]), 'y': int(self.keypoints[7][1]), 'z': None, 'pf': 'l_shoulder_default',
                                 'cf': 'l_elbow_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'parent': 'L_shoulder'},
 
+                            'R_shoulder_yaw': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'torso_default',
+                                'cf': 'r_y_shoulder_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': True, 'lower_j': 'R_elbow', 'parent': 'torso'},
+
+                            'R_shoulder_pitch': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'r_y_shoulder_default',
+                                'cf': 'r_p_shoulder_default', 'roll_f': False, 'pitch_f': True, 'yaw_f': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_yaw'},
+
                             'R_shoulder': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'r_p_shoulder_default',
                                 'cf': 'r_shoulder_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_pitch'},
 
-                            'R_shoulder_pitch': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'r_y_shoulder_default',
-                                'cf': 'r_p_shoulder_default', 'roll_f': False, 'pitch_f': True, 'yaw_f': False, 'lower_j': 'R_knee', 'parent': 'R_shoulder_yaw'},
+                            'L_shoulder_yaw': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'torso_default',
+                                'cf': 'l_y_shoulder_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': True, 'lower_j': 'L_elbow', 'parent': 'torso'},
 
-                            'R_shoulder_yaw': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'torso_default',
-                                'cf': 'r_y_shoulder_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': True, 'lower_j': 'R_knee', 'parent': 'torso'},
+                            'L_shoulder_pitch': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'l_y_shoulder_default',
+                                'cf': 'l_p_shoulder_default', 'roll_f': False, 'pitch_f': True, 'yaw_f': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_yaw'},
 
                             'L_shoulder': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'l_p_shoulder_default',
                                 'cf': 'l_shoulder_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_pitch'},
-
-                            'L_shoulder_pitch': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'l_y_shoulder_default',
-                                'cf': 'l_p_shoulder_default', 'roll_f': False, 'pitch_f': True, 'yaw_f': False, 'lower_j': 'R_knee', 'parent': 'L_shoulder_yaw'},
-
-                            'L_shoulder_yaw': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'torso_default',
-                                'cf': 'l_y_shoulder_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': True, 'lower_j': 'R_knee', 'parent': 'torso'},
 
                             'torso': {'x': int((self.keypoints[6][0]+self.keypoints[5][0])/2), 'y': int((self.keypoints[6][1]+self.keypoints[5][1])/2),
                                 'z': None, 'pf': 'body_default', 'cf': 'torso_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'parent': 'body'},
@@ -455,7 +457,7 @@ class SingleImageAlphaPose():
                             'head_pitch': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'pf':'y_head_default', 'cf': 'p_head_default',
                                 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'parent': 'head_yaw'},
 
-                            'body': {'x': int((self.keypoints[6][0]+self.keypoints[5][0])/2), 'y': int((self.keypoints[6][1])+self.keypoints[11][1])/2, 'z': None,
+                            'body': {'x': int((self.keypoints[6][0]+self.keypoints[5][0])/2), 'y': int((self.keypoints[6][1])+self.keypoints[5][1])/2, 'z': None,
                                 'pf': 'panda_2/realsense', 'cf': 'body_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False}}
 
                             
@@ -527,22 +529,70 @@ class SingleImageAlphaPose():
                 #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
                 
                 for key, joint in self.body.items():
-                    if key == 'body':
-                        self.SendTransform2tf(p=self.uv_to_XY(joint['x'], joint['y'], joint['z']), parent_frame= joint['pf'], child_frame=joint['cf'])
-                    else:
-                        if joint['cf']:
-                            trans_joint_xyz = self.transToHead_xyz(parent=joint['parent'], child=key)
+                    bodyxyz = self.uv_to_XY(self.body['body']['x'], self.body['body']['y'], self.body['body']['z'])
 
-                            if joint['cf'] != None:
-                                self.SendTransform2tf(p=trans_joint_xyz, parent_frame=joint['pf'], child_frame=joint['cf'])
+                    self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=self.body['body']['cf']) 
+                    transform = self.GetCameraTrans('world','body_default')
+                    rotation = q2r([transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z])
+                    tr = np.eye(3)
+                    tr = np.transpose(rotation)
+                    
+                    if joint['cf'] and key != 'body':
+                        if joint['pf'] == 'body_default':
+                            posfin = np.eye(3)@tr
+                            q_fin = r2q(posfin)
+                            #trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
+                            trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
+                            self.SendTransform2tf(p=trans_joint_xyz, q=q_fin, parent_frame=joint['pf'], child_frame=joint['cf'])
+                        else:
+                            if joint['cf'] != None and joint['pitch_f'] == False and joint['yaw_f'] == False:
+                                trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
+                                #trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
+                                self.SendTransform2tf(p=[trans_joint_xyz[0], trans_joint_xyz[1], trans_joint_xyz[2]], parent_frame=joint['pf'], child_frame=joint['cf'])
                             if joint['pitch_f']:
-                                
-                                trans_joint_q = self.transToHead_PY(parent=joint['parent'], child=key)
+                                trans_joint_q = self.transToParent_PY(child=key)
                                 self.SendTransform2tf(q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
                             if joint['yaw_f']:
                                 
-                                trans_joint_q = self.transToHead_PY(parent=joint['parent'], child=key)
+                                trans_joint_q = self.transToParent_PY(child=key)
                                 self.SendTransform2tf(q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
+
+                """ body = self.body['body']
+                bodyxyz = self.uv_to_XY(body['x'], body['y'], body['z'])
+                torso = self.body['torso']
+                torsoxyz = self.uv_to_XY(torso['x'], torso['y'], torso['z'])
+
+                self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=body['cf']) 
+                transform = self.GetCameraTrans('world','body_default')
+                #R_tmp = np.transpose(q2r([1, transform.rotation.x, transform.rotation.y, transform.rotation.z]))
+                print(transform)
+
+                rotation = q2r([transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z])
+                translation = [transform.translation.x, transform.translation.y, transform.translation.z]
+                tr = np.eye(3)
+                tr = np.transpose(rotation)
+                #tr[0:3, -1] = translation
+
+                pos_torso = np.eye(3)
+                
+
+                posfin = pos_torso@tr
+
+                q_fin = r2q(posfin)
+
+
+                # Svojo matriko ki jo dobis iz alphapose - vzames R in naredis new_R = R@rot_tr
+
+                
+                #self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=body['cf']) 
+                #R_tmp = np.eye(3)@rot_z(np.pi/2)
+                #q_tmp = r2q(R_tmp)
+                self.SendTransform2tf(p=torsoxyz, q=q_fin, parent_frame=torso['pf'], child_frame=torso['cf'])  """
+                
+
+
+                
+                    
 
        
 
@@ -574,12 +624,19 @@ class SingleImageAlphaPose():
 
         self.pub_TRANS_POSE.sendTransform(self.transmsg)
 
-    def calculate_RPY(self, joint_1:list, joint_2:list):
-        print(f"{Fore.RED} J1: {joint_1}|{Fore.BLUE} J2: {joint_2}")
-        Pitch = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
-        Yaw = math.atan((joint_1[1]-joint_2[1])/(joint_1[0]-joint_2[0]))
+    def GetCameraTrans(self, from_sys, to_sys):
+        trans= self.tfbuffer.lookup_transform(from_sys, to_sys, rospy.Time())
+        transform = trans.transform
+        return transform
+        
 
-        return [0, Pitch, Yaw]
+    def calculate_Rot(self, joint_1:list, joint_2:list):
+        #print(f"{Fore.RED} J1: {joint_1}|{Fore.BLUE} J2: {joint_2}")
+        roty = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
+        rotz = math.atan((joint_1[1]-joint_2[1])/(joint_1[0]-joint_2[0]))
+        roty = rot_y(roty)
+        rotz = rot_z(rotz)
+        return roty, rotz
 
     def depth_remap(self, depth):
         self.adj_DEPTH = 65536- depth
@@ -603,55 +660,29 @@ class SingleImageAlphaPose():
         Z = z
         return [X, Y, Z]
 
-    def transToHead_xyz(self, parent:str, child:str):
+    def transToParent_xyz(self, parent:str, child:str):
         parentlink = self.body[parent]
         joint = self.body[child]
         jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-        joint_coord = x2t([jointxyz[0],jointxyz[1],jointxyz[2], 1, 1, 1, 1])
-
         parentxyz = self.uv_to_XY(parentlink['x'], parentlink['y'], parentlink['z'])
-        parent_coord = x2t([parentxyz[0], parentxyz[1], parentxyz[2], 1, 1, 1, 1])
-        #print(f"{Fore.RED} joint: {joint_coord} \n {Fore.BLUE}body: {parent_coord}")
-        dt = np.linalg.solve(joint_coord, parent_coord)
-        res = dt @ joint_coord
+        delta = [jointxyz[0]-parentxyz[0], jointxyz[1]-parentxyz[1], jointxyz[2]-parentxyz[2]]
+        result = []
+        print(parent)
+        print(child)
+        for i in range(len(delta)):
+            result.append(parentxyz[i] + delta[i])
+        return result
+        
 
-        return [res[0,3], res[1,3], res[2,3]]
-    """ def transToHead_xyz(self, joint_x, joint_y, joint_z):
-        nose = self.body['nose']
-
-        nosedim = self.uv_to_XY(nose['x'], nose['y'], nose['z'])
-        jointdim = self.uv_to_XY(joint_x, joint_y, joint_z)
-        dt = np.matrix([[1, 0, 0, nosedim[0]-jointdim[0]],
-                        [0, 0, 1, nosedim[1]-jointdim[1]],
-                        [0, 1, 0, nosedim[2]-jointdim[2]],
-                        [0, 0, 0, 1]])
-
-        jointposit = np.matrix([[jointdim[0]],
-                                [jointdim[1]],
-                                [jointdim[2]],
-                                [1]])
-
-        P = self.uv_to_XY(joint_x, joint_y, joint_z/2)
-        transmat = np.eye(4)
-        #print(P)
-        transmat[0:3, 3] = P
-
-        #dt = np.linalg.solve(Thead, transmat)
-        res = dt @ jointposit
-        print(res)
-        return [res[0,0], res[1,0], res[2,0]] """
-
-    def transToHead_PY(self, parent:str, child:str):
-        parentlink = self.body[child]
-        #childlink = self.body[child]
+    def transToParent_PY(self, child:str):
+        upperlink = self.body[child]
         lowerj = self.body[child]['lower_j']
         lowerlink = self.body[lowerj]
 
-        RPY = self.calculate_RPY([parentlink['x'],parentlink['y'],parentlink['z']], [lowerlink['x'],lowerlink['y'],lowerlink['z']])
-        res = rpy2r(RPY, out='Q')
-
-
-        return res
+        rotm_y, rotm_z = self.calculate_Rot([upperlink['x'], upperlink['y'], upperlink['z']], [lowerlink['x'], lowerlink['y'], lowerlink['z']])
+        m_res = np.eye(3) @ rotm_y @ rotm_z
+        q_res = r2q(m_res)
+        return q_res
     
     def enablePose_CB(self, req):
         state = req.data
