@@ -392,10 +392,10 @@ class SingleImageAlphaPose():
                                 'cf': 'l_hip_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'lower_j': 'L_knee', 'parent': 'L_hip_pitch'},
 
                             'L_hip_yaw': {'x': int(self.keypoints[11][0]), 'y': int(self.keypoints[11][1]), 'z': None, 'pf': 'waist_default',
-                                'cf': 'l_y_hip_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': True, 'lower_j': 'R_knee', 'parent': 'waist'},
+                                'cf': 'l_y_hip_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': True, 'lower_j': 'L_knee', 'parent': 'waist'},
 
                             'L_hip_pitch': {'x': int(self.keypoints[11][0]), 'y': int(self.keypoints[11][1]), 'z': None, 'pf': 'l_y_hip_default',
-                                'cf': 'l_p_hip_default', 'roll_f': False, 'pitch_f': True, 'yaw_f': False, 'lower_j': 'R_knee', 'parent': 'L_hip_yaw'},
+                                'cf': 'l_p_hip_default', 'roll_f': False, 'pitch_f': True, 'yaw_f': False, 'lower_j': 'L_knee', 'parent': 'L_hip_yaw'},
 
                             'waist': {'x': int((self.keypoints[11][0]+self.keypoints[12][0])/2), 'y': int((self.keypoints[11][1]+self.keypoints[12][1])/2),
                                 'z': None, 'pf': 'body_default', 'cf': 'waist_default', 'roll_f': False, 'pitch_f': False, 'yaw_f': False, 'parent': 'body'},
@@ -511,7 +511,10 @@ class SingleImageAlphaPose():
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
             if self.pose != None:
                 for key, joint in self.body.items():
-                    joint['z'] = self.depth_remap(self.img_blur_DEPTH[int(joint['y']), int(joint['x'])])
+                    if joint['y'] >= 480:
+                        joint['z'] = self.depth_remap(self.img_blur_DEPTH[479, int(joint['x'])])
+                    else:
+                        joint['z'] = self.depth_remap(self.img_blur_DEPTH[int(joint['y']), int(joint['x'])])
                     #print(joint['y'])
 
 
@@ -545,54 +548,162 @@ class SingleImageAlphaPose():
                             trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
                             self.SendTransform2tf(p=trans_joint_xyz, q=q_fin, parent_frame=joint['pf'], child_frame=joint['cf'])
                         else:
-                            if joint['cf'] != None and joint['pitch_f'] == False and joint['yaw_f'] == False:
-                                trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
+                            #and joint['pitch_f'] == False and joint['yaw_f'] == False
+                            if joint['cf'] != None:
+                                parentind = joint['parent']
+                                distx = joint['x']-self.body[parentind]['x']
+                                disty = joint['y']-self.body[parentind]['y']
+                                distz = joint['z']-self.body[parentind]['z']
+                                pvec = self.uv_to_XY(distx, disty, distz)
+                                #trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
                                 #trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                                self.SendTransform2tf(p=[trans_joint_xyz[0], trans_joint_xyz[1], trans_joint_xyz[2]], parent_frame=joint['pf'], child_frame=joint['cf'])
+                                self.SendTransform2tf(p=pvec, parent_frame=joint['pf'], child_frame=joint['cf'])
                             if joint['pitch_f']:
                                 trans_joint_q = self.transToParent_PY(child=key)
-                                self.SendTransform2tf(q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
+                                self.SendTransform2tf(p=pvec, q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
                             if joint['yaw_f']:
                                 
                                 trans_joint_q = self.transToParent_PY(child=key)
-                                self.SendTransform2tf(q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
+                                self.SendTransform2tf(p=pvec, q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
 
                 """ body = self.body['body']
                 bodyxyz = self.uv_to_XY(body['x'], body['y'], body['z'])
+
                 torso = self.body['torso']
                 torsoxyz = self.uv_to_XY(torso['x'], torso['y'], torso['z'])
+
+                shoulderyR = self.body['R_shoulder_yaw']
+                shoulderyRxyz = self.uv_to_XY(shoulderyR['x'], shoulderyR['y'], shoulderyR['z'])
+
+                shoulderyL = self.body['L_shoulder_yaw']
+                shoulderyLxyz = self.uv_to_XY(shoulderyL['x'], shoulderyL['y'], shoulderyL['z'])
+
+                shoulderpR = self.body['R_shoulder_pitch']
+                shoulderpRxyz = self.uv_to_XY(shoulderpR['x'], shoulderpR['y'], shoulderpR['z'])
+
+                shoulderpL = self.body['L_shoulder_pitch']
+                shoulderpLxyz = self.uv_to_XY(shoulderpL['x'], shoulderpL['y'], shoulderpL['z'])
+
+                shoulderR = self.body['R_shoulder']
+                shoulderRxyz = self.uv_to_XY(shoulderR['x'], shoulderR['y'], shoulderR['z'])
+                
+                shoulderL = self.body['L_shoulder']
+                shoulderLxyz = self.uv_to_XY(shoulderL['x'], shoulderL['y'], shoulderL['z'])
+
+                elbowR = self.body['R_elbow']
+                elbowRxyz = self.uv_to_XY(elbowR['x'], elbowR['y'], elbowR['z'])
+
+                elbowL = self.body['L_elbow']
+                elbowLxyz = self.uv_to_XY(elbowR['x'], elbowR['y'], elbowR['z'])
+
+                wristR = self.body['R_wrist']
+                wristRxyz = self.uv_to_XY(wristR['x'], wristR['y'], wristR['z'])
+                
+                wristL = self.body['L_wrist']
+                wristLxyz = self.uv_to_XY(wristL['x'], wristL['y'], wristL['z'])
+
+                hipyR = self.body['R_hip_yaw']
+                hipyRxyz = self.uv_to_XY(hipyR['x'], hipyR['y'], hipyR['z'])
+
+                hipyL = self.body['L_hip_yaw']
+                hipyLxyz = self.uv_to_XY(hipyL['x'], hipyL['y'], hipyL['z'])
+
+                hippR = self.body['R_hip_pitch']
+                hippRxyz = self.uv_to_XY(hippR['x'], hippR['y'], hippR['z'])
+
+                hippL = self.body['L_hip_pitch']
+                hippLxyz = self.uv_to_XY(hippL['x'], hippL['y'], hippL['z'])
+
+                hipR = self.body['R_hip']
+                hipRxyz = self.uv_to_XY(hipR['x'], hipR['y'], hipR['z'])
+                
+                hipL = self.body['L_hip']
+                hipLxyz = self.uv_to_XY(hipL['x'], hipL['y'], hipL['z'])
+
+                waist = self.body['waist']
+                waistxyz = self.uv_to_XY(waist['x'], waist['y'], waist['z'])
+
+
 
                 self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=body['cf']) 
                 transform = self.GetCameraTrans('world','body_default')
                 #R_tmp = np.transpose(q2r([1, transform.rotation.x, transform.rotation.y, transform.rotation.z]))
-                print(transform)
-
+                #print(transform)
+                print(f"{Fore.GREEN}EX: {elbowRxyz[0]}|SX: {shoulderRxyz[0]}\nEY: {elbowRxyz[1]}|SY: {shoulderRxyz[1]}\nEZ:{elbowRxyz[2]}|SZ: {shoulderRxyz[2]}")
                 rotation = q2r([transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z])
                 translation = [transform.translation.x, transform.translation.y, transform.translation.z]
                 tr = np.eye(3)
                 tr = np.transpose(rotation)
                 #tr[0:3, -1] = translation
-
+                rottorso = math.atan(shoulderLxyz[2]-shoulderRxyz[2]/shoulderLxyz[0]-shoulderRxyz[0])+math.pi/2
                 pos_torso = np.eye(3)
                 
-
                 posfin = pos_torso@tr
 
                 q_fin = r2q(posfin)
 
+                waisttrans = self.transToParent_xyz('body', 'waist')
+                shoulderRtransy = self.transToParent_xyz('torso', 'R_shoulder_yaw')
+                shoulderRroty=self.transToParent_PY('R_shoulder_yaw')
+                shoulderRtransp = self.transToParent_xyz('R_shoulder_yaw', 'R_shoulder_pitch')
+                shoulderRrotp=self.transToParent_PY('R_shoulder_pitch')
+                shoulderRtrans = self.transToParent_xyz('R_shoulder_pitch', 'R_shoulder')
+                
+                shoulderLtransy = self.transToParent_xyz('torso', 'L_shoulder_yaw')
+                shoulderLroty=self.transToParent_PY('L_shoulder_yaw')
+                shoulderLtransp = self.transToParent_xyz('L_shoulder_yaw', 'L_shoulder_pitch')
+                shoulderLrotp=self.transToParent_PY('L_shoulder_pitch')
+                shoulderLtrans = self.transToParent_xyz('L_shoulder_pitch', 'L_shoulder')
+                
+                ewlbowRtrans = self.transToParent_xyz('R_shoulder', 'R_elbow')
+                ewlbowLtrans = self.transToParent_xyz('L_shoulder', 'L_elbow')
 
-                # Svojo matriko ki jo dobis iz alphapose - vzames R in naredis new_R = R@rot_tr
+                wristRtrans = self.transToParent_xyz('R_elbow', 'R_shoulder')
+                wristLtrans = self.transToParent_xyz('L_elbow', 'L_shoulder')
+
+                hipRtransy = self.transToParent_xyz('waist', 'R_hip_yaw')
+                hipRroty=self.transToParent_PY('R_hip_yaw')
+                hipRtransp = self.transToParent_xyz('R_hip_yaw', 'R_hip_pitch')
+                hipRrotp=self.transToParent_PY('R_hip_pitch')
+                hipRtrans = self.transToParent_xyz('R_hip_pitch', 'R_hip')
+                
+                hipLtransy = self.transToParent_xyz('waist', 'L_hip_yaw')
+                hipLroty=self.transToParent_PY('L_hip_yaw')
+                hipLtransp = self.transToParent_xyz('L_hip_yaw', 'L_hip_pitch')
+                hipLrotp=self.transToParent_PY('L_hip_pitch')
+                hipLtrans = self.transToParent_xyz('L_hip_pitch', 'L_hip')
+
 
                 
                 #self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=body['cf']) 
                 #R_tmp = np.eye(3)@rot_z(np.pi/2)
                 #q_tmp = r2q(R_tmp)
-                self.SendTransform2tf(p=torsoxyz, q=q_fin, parent_frame=torso['pf'], child_frame=torso['cf'])  """
-                
+                self.SendTransform2tf(p=torsoxyz, q=q_fin, parent_frame=torso['pf'], child_frame=torso['cf']) 
+                self.SendTransform2tf(p=waistxyz, q=q_fin, parent_frame=waist['pf'], child_frame=waist['cf']) 
 
+                self.SendTransform2tf(p=shoulderRtransy, q=shoulderRroty, parent_frame=shoulderyR['pf'], child_frame=shoulderyR['cf']) 
+                self.SendTransform2tf(p=shoulderRtransp, q=shoulderRrotp, parent_frame=shoulderpR['pf'], child_frame=shoulderpR['cf']) 
+                self.SendTransform2tf(p=shoulderRtrans, parent_frame=shoulderR['pf'], child_frame=shoulderR['cf']) 
+
+                self.SendTransform2tf(p=shoulderLtransy, q=shoulderLroty, parent_frame=shoulderyL['pf'], child_frame=shoulderyL['cf']) 
+                self.SendTransform2tf(p=shoulderLtransp, q=shoulderLrotp, parent_frame=shoulderpL['pf'], child_frame=shoulderpL['cf']) 
+                self.SendTransform2tf(p=shoulderLtrans, parent_frame=shoulderL['pf'], child_frame=shoulderL['cf']) 
+
+                self.SendTransform2tf(p=ewlbowRtrans, parent_frame=elbowR['pf'], child_frame=elbowR['cf']) 
+                self.SendTransform2tf(p=ewlbowLtrans, parent_frame=elbowL['pf'], child_frame=elbowL['cf']) 
+
+                self.SendTransform2tf(p=wristRtrans, parent_frame=wristR['pf'], child_frame=wristR['cf']) 
+                self.SendTransform2tf(p=wristLtrans, parent_frame=wristL['pf'], child_frame=wristL['cf']) 
+
+                self.SendTransform2tf(p=hipRtransy, q=hipRroty, parent_frame=hipyR['pf'], child_frame=hipyR['cf']) 
+                self.SendTransform2tf(p=hipRtransp, q=hipRrotp, parent_frame=hippR['pf'], child_frame=hippR['cf']) 
+                self.SendTransform2tf(p=hipRtrans, parent_frame=hipR['pf'], child_frame=hipR['cf']) 
+
+                self.SendTransform2tf(p=hipLtransy, q=hipLroty, parent_frame=hipyL['pf'], child_frame=hipyL['cf']) 
+                self.SendTransform2tf(p=hipLtransp, q=hipLrotp, parent_frame=hippL['pf'], child_frame=hippL['cf']) 
+                self.SendTransform2tf(p=hipLtrans, parent_frame=hipL['pf'], child_frame=hipL['cf'])  """
 
                 
-                    
 
        
 
@@ -632,11 +743,26 @@ class SingleImageAlphaPose():
 
     def calculate_Rot(self, joint_1:list, joint_2:list):
         #print(f"{Fore.RED} J1: {joint_1}|{Fore.BLUE} J2: {joint_2}")
-        roty = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
-        rotz = math.atan((joint_1[1]-joint_2[1])/(joint_1[0]-joint_2[0]))
-        roty = rot_y(roty)
-        rotz = rot_z(rotz)
-        return roty, rotz
+        
+        #roll = math.atan((joint_1[0]-joint_2[0])/(joint_1[1]-joint_2[1]))
+        #yaw = math.atan((joint_1[2]-joint_2[2])/(joint_1[1]-joint_2[1]))
+        #pitch = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
+        rot = [None, None, None]
+        rot[0] = math.atan((joint_1[2]-joint_2[2])/(joint_1[1]-joint_2[1]))
+        rot[1] = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
+        rot[2] = math.atan((joint_1[0]-joint_2[0])/(joint_1[1]-joint_2[1]))
+        
+        #rot = rpy2r([0, rotz, rotx])
+        #print(f"{Fore.LIGHTRED_EX}angle X: {rot[2]}\nangle Y: {rot[0]}\nangle Z: {rot[1]}\n")
+
+        rotm_x = rot_x(rot[2])
+        rotm_y = rot_y(rot[0])
+        rotm_z = rot_z(rot[1])
+
+        #roty = math.atan((joint_1[0]-joint_2[0])/(joint_1[1]-joint_2[1]))
+        #rotx = math.atan((joint_1[2]-joint_2[2])/(joint_1[1]-joint_2[1]))
+        #rotz = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
+        return rotm_x, rotm_y, rotm_z
 
     def depth_remap(self, depth):
         self.adj_DEPTH = 65536- depth
@@ -665,22 +791,33 @@ class SingleImageAlphaPose():
         joint = self.body[child]
         jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
         parentxyz = self.uv_to_XY(parentlink['x'], parentlink['y'], parentlink['z'])
-        delta = [jointxyz[0]-parentxyz[0], jointxyz[1]-parentxyz[1], jointxyz[2]-parentxyz[2]]
+        """ delta = [jointxyz[0]-parentxyz[0], jointxyz[1]-parentxyz[1], jointxyz[2]-parentxyz[2]]
         result = []
         print(parent)
         print(child)
         for i in range(len(delta)):
             result.append(parentxyz[i] + delta[i])
-        return result
+        return result """
+
+        dz = jointxyz[2] - parentxyz[2]
+        dx = jointxyz[0] - parentxyz[0]
+        dy = jointxyz[1] - parentxyz[1]
         
+        return [0, 2*dy, 2*dz]
 
     def transToParent_PY(self, child:str):
         upperlink = self.body[child]
         lowerj = self.body[child]['lower_j']
         lowerlink = self.body[lowerj]
 
-        rotm_y, rotm_z = self.calculate_Rot([upperlink['x'], upperlink['y'], upperlink['z']], [lowerlink['x'], lowerlink['y'], lowerlink['z']])
-        m_res = np.eye(3) @ rotm_y @ rotm_z
+        rotm_x, rotm_y, rotm_z = self.calculate_Rot([upperlink['x'], upperlink['y'], upperlink['z']], [lowerlink['x'], lowerlink['y'], lowerlink['z']])
+        m_res = np.eye(3)
+        if upperlink['yaw_f'] == True:
+            m_res = m_res @ rotm_x
+
+        if upperlink['pitch_f'] == True:
+            m_res = m_res @ rotm_z
+        
         q_res = r2q(m_res)
         return q_res
     
