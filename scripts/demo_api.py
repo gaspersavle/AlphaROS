@@ -374,10 +374,10 @@ class SingleImageAlphaPose():
                                 'cf': 'l_ankle_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'parent': 'L_knee'},
 
                             'R_knee': {'x': int(self.keypoints[14][0]), 'y': int(self.keypoints[14][1]), 'z': None, 'pf': 'r_hip_default',
-                                'cf': 'r_knee_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'parent': 'R_hip'},
+                                'cf': 'r_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'parent': 'R_hip'},
 
                             'L_knee': {'x': int(self.keypoints[13][0]), 'y': int(self.keypoints[14][1]), 'z': None, 'pf': 'l_hip_default',
-                                'cf': 'l_knee_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'parent': 'L_hip'},
+                                'cf': 'l_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'parent': 'L_hip'},
 
                             'R_hip_yaw': {'x': int(self.keypoints[12][0]), 'y': int(self.keypoints[12][1]), 'z': None, 'pf': 'waist_default',
                                 'cf': 'r_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': True, 'lower_j': 'R_knee', 'parent': 'body'},
@@ -547,26 +547,14 @@ class SingleImageAlphaPose():
                             posfin = np.eye(3)@tr
                             q_fin = r2q(posfin)
                             #trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
-                            trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                            self.SendTransform2tf(p=trans_joint_xyz, q=q_fin, parent_frame=joint['pf'], child_frame=joint['cf'])
+                            #trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
+                            self.SendTransform2tf(q=q_fin, parent_frame=joint['pf'], child_frame=joint['cf'])
                         else:
                             #and joint['rot_y'] == False and joint['rot_z'] == False
                             if joint['cf'] != None:
-                                parentind = joint['parent']
-                                distx = joint['x']-self.body[parentind]['x']
-                                disty = joint['y']-self.body[parentind]['y']
-                                distz = joint['z']-self.body[parentind]['z']
-                                pvec = self.uv_to_XY(distx, disty, distz)
-                                #trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
-                                #trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                                self.SendTransform2tf(p=pvec, parent_frame=joint['pf'], child_frame=joint['cf'])
-                            if joint['rot_y']:
-                                trans_joint_q = self.transToParent_PY(child=key)
-                                self.SendTransform2tf(p=pvec, q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
-                            if joint['rot_z']:
-                                
-                                trans_joint_q = self.transToParent_PY(child=key)
-                                self.SendTransform2tf(p=pvec, q=trans_joint_q, parent_frame=joint['pf'], child_frame=joint['cf'])
+                                rotJoint = self.getRot(joint=key)
+                                self.SendTransform2tf(q=rotJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
+
 
                 """ body = self.body['body']
                 bodyxyz = self.uv_to_XY(body['x'], body['y'], body['z'])
@@ -744,28 +732,31 @@ class SingleImageAlphaPose():
         
     #TODO: Napisi funkcijo, ki bo trensformirala samo rotacije na bazi pravil, ki jih mas na listu
 
-    def calculate_Rot(self, joint_1:list, joint_2:list):
-        #print(f"{Fore.RED} J1: {joint_1}|{Fore.BLUE} J2: {joint_2}")
-        
-        #roll = math.atan((joint_1[0]-joint_2[0])/(joint_1[1]-joint_2[1]))
-        #yaw = math.atan((joint_1[2]-joint_2[2])/(joint_1[1]-joint_2[1]))
-        #pitch = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
-        rot = [None, None, None]
-        rot[0] = math.atan((joint_1[2]-joint_2[2])/(joint_1[1]-joint_2[1]))
-        rot[1] = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
-        rot[2] = math.atan((joint_1[0]-joint_2[0])/(joint_1[1]-joint_2[1]))
-        
-        #rot = rpy2r([0, rotz, rotx])
-        #print(f"{Fore.LIGHTRED_EX}angle X: {rot[2]}\nangle Y: {rot[0]}\nangle Z: {rot[1]}\n")
+    def getRot(self, joint:str):
+        curJoint = self.body[joint]
+        lowJoint = curJoint['lower_j']
 
-        rotm_x = rot_x(rot[2])
-        rotm_y = rot_y(rot[0])
-        rotm_z = rot_z(rot[1])
+        curPos = self.uv_to_XY(curJoint['x'], curJoint['y'], curJoint['z'])
+        lowPos = self.uv_to_XY(lowJoint['x'], lowJoint['y'], lowJoint['z'])
 
-        #roty = math.atan((joint_1[0]-joint_2[0])/(joint_1[1]-joint_2[1]))
-        #rotx = math.atan((joint_1[2]-joint_2[2])/(joint_1[1]-joint_2[1]))
-        #rotz = math.atan((joint_1[0]-joint_2[0])/(joint_1[2]-joint_2[2]))
-        return rotm_x, rotm_y, rotm_z
+        if curJoint['rot_x']:
+            dx = curPos[0] - lowPos[0]
+            dy = curPos[1] - lowPos[1]
+            rot = math.atan(dx/dy)
+            return r2q(rot_x(rot))
+        
+        if curJoint['rot_y']:
+            dz = curPos[2] - lowPos[2]
+            dy = curPos[1] - lowPos[1]
+            rot = math.atan(dz/dy)
+            return r2q(rot_y(rot))
+        
+        if curJoint['rot_z']:
+            dx = curPos[0] - lowPos[0]
+            dz = curPos[2] - lowPos[2]
+            rot = math.atan(dx/dz)
+            return r2q(rot_z(rot))
+        
 
     def depth_remap(self, depth):
         self.adj_DEPTH = 65536- depth
@@ -808,21 +799,6 @@ class SingleImageAlphaPose():
         
         return [0, 2*dy, 2*dz]
 
-    def transToParent_PY(self, child:str):
-        upperlink = self.body[child]
-        lowerj = self.body[child]['lower_j']
-        lowerlink = self.body[lowerj]
-
-        rotm_x, rotm_y, rotm_z = self.calculate_Rot([upperlink['x'], upperlink['y'], upperlink['z']], [lowerlink['x'], lowerlink['y'], lowerlink['z']])
-        m_res = np.eye(3)
-        if upperlink['rot_z'] == True:
-            m_res = m_res @ rotm_x
-
-        if upperlink['rot_y'] == True:
-            m_res = m_res @ rotm_z
-        
-        q_res = r2q(m_res)
-        return q_res
     
     def enablePose_CB(self, req):
         state = req.data
