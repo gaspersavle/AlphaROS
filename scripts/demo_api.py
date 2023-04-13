@@ -12,6 +12,7 @@ import sys
 import math
 import time
 import statistics as stat
+import queue
 import yaml
 import sys
 #from helpers import path
@@ -335,8 +336,128 @@ class SingleImageAlphaPose():
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
         #init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
-
         ####################################################################################
+        ## Begin: Body dict
+        ####################################################################################
+        self.body ={'R_ankle': {'x': None, 'y': None, 'z': None, 'pf': 'r_knee_default', 
+                        'cf': 'r_ankle_default','rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_knee',
+                        'transj': [0, 0, -0.44], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_ankle': {'x': None, 'y': None, 'z': None, 'pf': 'l_knee_default', 
+                        'cf': 'l_ankle_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'L_knee',
+                        'transj': [0, 0, -0.44], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_knee': {'x': None, 'y': None, 'z': None, 'pf': 'r_hip_default',
+                        'cf': 'r_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_ankle', 'parent': 'R_hip', 'neg': False,
+                        'transj': [0, 0, -0.33], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_knee': {'x': None, 'y': None, 'z': None, 'pf': 'l_hip_default',
+                        'cf': 'l_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_ankle', 'parent': 'L_hip', 'neg': False,
+                        'transj': [0, 0, -0.33], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_hip_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'waist_default',
+                        'cf': 'r_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'body', 'neg': True,
+                        'transj': [0, -0.132, 0], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_hip_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'r_y_hip_default',
+                        'cf': 'r_p_hip_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'R_hip_yaw', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_hip': {'x': None, 'y': None, 'z': None, 'pf': 'r_p_hip_default',
+                        'cf': 'r_hip_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'R_hip_pitch', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_hip_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'waist_default',
+                        'cf': 'l_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'body', 'neg': True, 
+                        'transj': [0, 0.132, 0], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_hip_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'l_y_hip_default',
+                        'cf': 'l_p_hip_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'L_hip_yaw', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_hip': {'x': None, 'y': None, 'z': None, 'pf': 'l_p_hip_default',
+                        'cf': 'l_hip_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'L_hip_pitch', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_wrist': {'x': None, 'y': None, 'z': None, 'pf': 'r_elbow_default',
+                        'cf': 'r_wrist_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_elbow', 
+                        'transj': [0, 0, -0.22], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_wrist': {'x': None, 'y': None, 'z': None, 'pf': 'l_elbow_default',
+                        'cf': 'l_wrist_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'L_elbow', 
+                        'transj': [0, 0, -0.22], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_elbow': {'x': None, 'y': None, 'z': None, 'pf': 'r_shoulder_default',
+                        'cf': 'r_elbow_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_wrist', 'parent': 'R_shoulder', 'neg': False, 
+                        'transj': [0, 0, -0.352], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_elbow': {'x': None, 'y': None, 'z': None, 'pf': 'l_shoulder_default',
+                        'cf': 'l_elbow_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_wrist', 'parent': 'L_shoulder', 'neg': False, 
+                        'transj': [0, 0, -0.352], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_shoulder_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default',
+                        'cf': 'r_y_shoulder_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'torso', 'neg': False, 
+                        'transj' : [0, -0.176, 0], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_shoulder_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'r_y_shoulder_default',
+                        'cf': 'r_p_shoulder_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_yaw', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_shoulder': {'x': None, 'y': None, 'z': None, 'pf': 'r_p_shoulder_default',
+                        'cf': 'r_shoulder_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_pitch', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_shoulder_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default',
+                        'cf': 'l_y_shoulder_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'torso', 'neg': True, 
+                        'transj' : [0, 0.176, 0], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_shoulder_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'l_y_shoulder_default',
+                        'cf': 'l_p_shoulder_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_yaw', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_shoulder': {'x': None, 'y': None, 'z': None, 'pf': 'l_p_shoulder_default',
+                        'cf': 'l_shoulder_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_pitch', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_ear': {'x': None, 'y': None, 'z': None, 'cf': None,
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_ear': {'x': None, 'y': None, 'z': None, 'cf': None,
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'R_eye': {'x': None, 'y': None, 'z': None, 'cf': None,
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'L_eye': {'x': None, 'y': None, 'z': None, 'cf': None,
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'head': {'x': None, 'y': None, 'z': None, 'pf': 'p_head_default', 'cf': 'head_default',
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_pitch', 
+                        'transj' : [0.055, 0, 0.11], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'head_roll': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default', 'cf': 'r_head_default',
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'torso', 
+                        'transj' : [0, 0, 0.055], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'head_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'r_head_default', 'cf': 'y_head_default',
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_roll', 
+                        'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'head_pitch': {'x': None, 'y': None, 'z': None, 'pf':'y_head_default', 'cf': 'p_head_default',
+                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_yaw', 
+                        'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+
+                    'body': {'x': None, 'y': None, 'z': None,
+                        'pf': 'panda_2/realsense', 'cf': 'body_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 
+                        'transj' : None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+                    
+                    'waist': {'x': None, 'y': None,'z': None, 'pf': 'body_default', 
+                        'cf': 'waist_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'torso', 'parent': 'body', 'neg': False, 
+                        'transj': None, 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)},
+                        
+                    'torso': {'x': None, 'y': None,
+                        'z': None, 'pf': 'waist_default', 'cf': 'torso_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'waist', 'neg': True, 
+                        'transj': [0, 0, 0.605], 'qx': np.ndarray(3), 'qy': np.ndarray(3), 'qz': np.ndarray(3)}}
         #init rospy
         rospy.init_node("vision", anonymous = True)
 
@@ -367,100 +488,47 @@ class SingleImageAlphaPose():
                 self.nsecs = str(input.header.stamp)[10:]
 
                 #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
-                self.body ={'R_ankle': {'x': int(self.keypoints[16][0]), 'y': int(self.keypoints[16][1]), 'z': None, 'pf': 'r_knee_default', 
-                                'cf': 'r_ankle_default','rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_knee', 'transj': [0, 0, -0.44]},
+                i = 0
+                for key, joint in self.body.items():
+                    ending = key[-4:-1]
+                    #print(ending)
+                    if key != 'waist':
+                        if key != 'body':
+                            if key != 'torso':
+                                if ending != '_ya':
+                                    if ending != 'itc':
+                                        if ending != 'rol':
+                                            joint['x'] = int(self.keypoints[16-i][0])
+                                            joint['y'] = int(self.keypoints[16-i][1])
+                                            #print(f"{Fore.RED}{key}\n{Fore.BLACK}",joint)
+                                            i+=1
+                    
+                self.body['R_hip_yaw']['x'] = self.body['R_hip_pitch']['x'] = self.body['R_hip']['x'] 
+                self.body['R_hip_yaw']['y'] = self.body['R_hip_pitch']['y'] = self.body['R_hip']['y'] 
 
-                            'L_ankle': {'x': int(self.keypoints[15][0]), 'y': int(self.keypoints[15][1]), 'z': None, 'pf': 'l_knee_default', 
-                                'cf': 'l_ankle_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'L_knee', 'transj': [0, 0, -0.44]},
+                self.body['L_hip_yaw']['x'] = self.body['L_hip_pitch']['x'] = self.body['L_hip']['x'] 
+                self.body['L_hip_yaw']['y'] = self.body['L_hip_pitch']['y'] = self.body['L_hip']['y'] 
 
-                            'R_knee': {'x': int(self.keypoints[14][0]), 'y': int(self.keypoints[14][1]), 'z': None, 'pf': 'r_hip_default',
-                                'cf': 'r_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_ankle', 'parent': 'R_hip', 'neg': False, 'transj': [0, 0, -0.33]},
+                self.body['R_shoulder_yaw']['x'] = self.body['R_shoulder_pitch']['x'] = self.body['R_shoulder']['x'] 
+                self.body['R_shoulder_yaw']['y'] = self.body['R_shoulder_pitch']['y'] = self.body['R_shoulder']['y'] 
+                
+                self.body['L_shoulder_yaw']['x'] = self.body['L_shoulder_pitch']['x'] = self.body['L_shoulder']['x'] 
+                self.body['L_shoulder_yaw']['y'] = self.body['L_shoulder_pitch']['y'] = self.body['L_shoulder']['y'] 
 
-                            'L_knee': {'x': int(self.keypoints[13][0]), 'y': int(self.keypoints[14][1]), 'z': None, 'pf': 'l_hip_default',
-                                'cf': 'l_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_ankle', 'parent': 'L_hip', 'neg': False, 'transj': [0, 0, -0.33]},
+                self.body['head_yaw']['x'] = self.body['head_roll']['x'] = self.body['head_pitch']['x'] = self.body['head']['x']
+                self.body['head_yaw']['y'] = self.body['head_roll']['y'] = self.body['head_pitch']['y'] = self.body['head']['y']
 
-                            'R_hip_yaw': {'x': int(self.keypoints[12][0]), 'y': int(self.keypoints[12][1]), 'z': None, 'pf': 'waist_default',
-                                'cf': 'r_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'body', 'neg': True, 'transj': [0, -0.132, 0]},
+                self.body['body']['x'] = (self.body['L_hip']['x']+self.body['R_hip']['x'])/2
+                self.body['body']['y'] = (self.body['L_hip']['y']+self.body['R_hip']['y'])/2
 
-                            'R_hip_pitch': {'x': int(self.keypoints[12][0]), 'y': int(self.keypoints[12][1]), 'z': None, 'pf': 'r_y_hip_default',
-                                'cf': 'r_p_hip_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'R_hip_yaw', 'neg': False, 'transj': None},
+                self.body['waist']['x'] = self.body['body']['x']
+                self.body['waist']['y'] = self.body['body']['y']
 
-                            'R_hip': {'x': int(self.keypoints[12][0]), 'y': int(self.keypoints[12][1]), 'z': None, 'pf': 'r_p_hip_default',
-                                'cf': 'r_hip_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'R_hip_pitch', 'neg': False, 'transj': None},
+                self.body['torso']['x'] = (self.body['L_shoulder']['x']+self.body['R_shoulder']['x'])/2
+                self.body['torso']['y'] = (self.body['L_shoulder']['y']+self.body['R_shoulder']['y'])/2
 
-                            'L_hip_yaw': {'x': int(self.keypoints[11][0]), 'y': int(self.keypoints[11][1]), 'z': None, 'pf': 'waist_default',
-                                'cf': 'l_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'body', 'neg': True, 'transj': [0, 0.132, 0]},
 
-                            'L_hip_pitch': {'x': int(self.keypoints[11][0]), 'y': int(self.keypoints[11][1]), 'z': None, 'pf': 'l_y_hip_default',
-                                'cf': 'l_p_hip_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'L_hip_yaw', 'neg': False, 'transj': None},
 
-                            'L_hip': {'x': int(self.keypoints[11][0]), 'y': int(self.keypoints[11][1]), 'z': None, 'pf': 'l_p_hip_default',
-                                'cf': 'l_hip_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'L_hip_pitch', 'neg': False, 'transj': None},
-
-                            'waist': {'x': int((self.keypoints[11][0]+self.keypoints[12][0])/2), 'y': int((self.keypoints[11][1]+self.keypoints[12][1])/2),
-                                'z': None, 'pf': 'body_default', 'cf': 'waist_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'torso', 'parent': 'body', 'neg': False, 'transj': None},
-
-                            'R_wrist': {'x': int(self.keypoints[10][0]), 'y': int(self.keypoints[10][1]), 'z': None, 'pf': 'r_elbow_default',
-                                'cf': 'r_wrist_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_elbow', 'transj': [0, 0, -0.22]},
-
-                            'L_wrist': {'x': int(self.keypoints[9][0]), 'y': int(self.keypoints[9][1]), 'z': None, 'pf': 'l_elbow_default',
-                                'cf': 'l_wrist_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'L_elbow', 'transj': [0, 0, -0.22]},
-
-                            'R_elbow': {'x': int(self.keypoints[8][0]), 'y': int(self.keypoints[8][1]), 'z': None, 'pf': 'r_shoulder_default',
-                                'cf': 'r_elbow_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_wrist', 'parent': 'R_shoulder', 'neg': False, 'transj': [0, 0, -0.352]},
-
-                            'L_elbow': {'x': int(self.keypoints[7][0]), 'y': int(self.keypoints[7][1]), 'z': None, 'pf': 'l_shoulder_default',
-                                'cf': 'l_elbow_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_wrist', 'parent': 'L_shoulder', 'neg': False, 'transj': [0, 0, -0.352]},
-
-                            'R_shoulder_yaw': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'torso_default',
-                                'cf': 'r_y_shoulder_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'torso', 'neg': False, 'transj' : [0, -0.176, 0]},
-
-                            'R_shoulder_pitch': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'r_y_shoulder_default',
-                                'cf': 'r_p_shoulder_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_yaw', 'neg': False, 'transj': None},
-
-                            'R_shoulder': {'x': int(self.keypoints[6][0]), 'y': int(self.keypoints[6][1]), 'z': None, 'pf': 'r_p_shoulder_default',
-                                'cf': 'r_shoulder_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_pitch', 'neg': False, 'transj': None},
-
-                            'L_shoulder_yaw': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'torso_default',
-                                'cf': 'l_y_shoulder_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'torso', 'neg': True, 'transj' : [0, 0.176, 0]},
-
-                            'L_shoulder_pitch': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'l_y_shoulder_default',
-                                'cf': 'l_p_shoulder_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_yaw', 'neg': False, 'transj': None},
-
-                            'L_shoulder': {'x': int(self.keypoints[5][0]), 'y': int(self.keypoints[5][1]), 'z': None, 'pf': 'l_p_shoulder_default',
-                                'cf': 'l_shoulder_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_pitch', 'neg': False, 'transj': None},
-
-                            'torso': {'x': int((self.keypoints[6][0]+self.keypoints[5][0])/2), 'y': int((self.keypoints[6][1]+self.keypoints[5][1])/2),
-                                'z': None, 'pf': 'waist_default', 'cf': 'torso_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'waist', 'neg': True, 'transj': [0, 0, 0.605]},
-
-                            'R_ear': {'x': int(self.keypoints[4][0]), 'y': int(self.keypoints[4][1]), 'z': None, 'cf': None,
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None},
-
-                            'L_ear': {'x': int(self.keypoints[3][0]), 'y': int(self.keypoints[3][1]), 'z': None, 'cf': None,
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None},
-
-                            'R_eye': {'x': int(self.keypoints[2][0]), 'y': int(self.keypoints[2][1]), 'z': None, 'cf': None,
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None},
-
-                            'L_eye': {'x': int(self.keypoints[1][0]), 'y': int(self.keypoints[1][1]), 'z': None, 'cf': None,
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None},
-
-                            'head': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'pf': 'p_head_default', 'cf': 'head_default',
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_pitch', 'transj' : [0.055, 0, 0.11]},
-
-                            'head_roll': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'pf': 'torso_default', 'cf': 'r_head_default',
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'torso', 'transj' : [0, 0, 0.055]},
-
-                            'head_yaw': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'pf': 'r_head_default', 'cf': 'y_head_default',
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_roll', 'transj' : None},
-
-                            'head_pitch': {'x': int(self.keypoints[0][0]), 'y': int(self.keypoints[0][1]), 'z': None, 'pf':'y_head_default', 'cf': 'p_head_default',
-                                'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_yaw', 'transj' : None},
-
-                            'body': {'x': int((self.keypoints[11][0]+self.keypoints[12][0])/2), 'y': int((self.keypoints[11][1]+self.keypoints[12][1])/2), 'z': None,
-                                'pf': 'panda_2/realsense', 'cf': 'body_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'transj' : None}}
-
-                            
                             
 
 
@@ -468,6 +536,7 @@ class SingleImageAlphaPose():
                 if self.args.circles == True:
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                    
 
             else:
                 print(f"{Fore.RED} No pose detected...")
@@ -480,22 +549,49 @@ class SingleImageAlphaPose():
         if self.enablePose:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
             self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
+            print(f"{Fore.GREEN}Depth: {self.img_blur_DEPTH[350, 240]}")
             #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
             #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
             if self.pose != None:
                 for key, joint in self.body.items():
+                    print(key,joint)
                     if joint['y'] >= 480:
                         joint['z'] = self.depth_remap(self.img_blur_DEPTH[479, int(joint['x'])])
+                        #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
                     else:
                         joint['z'] = self.depth_remap(self.img_blur_DEPTH[int(joint['y']), int(joint['x'])])
-                    #print(joint['y'])
+                        #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
+                    np.roll(joint['qx'],-1)
+                    np.take(joint['qx'], 0)
+                    np.put(joint['qx'], 2, joint['x'])
 
+                    np.roll(joint['qy'],-1)
+                    np.take(joint['qy'], 0)
+                    np.put(joint['qy'], 2, joint['y'])
+
+                    np.roll(joint['qz'],-1)
+                    np.take(joint['qz'], 0)
+                    np.put(joint['qz'], 2, joint['z'])
+                    #print(joint['y'])
+                    #print(f"{Fore.LIGHTBLUE_EX}{key}\n  Qx: {joint['qx']}\n  Qy: {joint['qy']}\n  Qz: {joint['qz']}")
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
                 #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
+                """ self.vis_POSE = cv2.putText(self.vis_POSE, 
+                                            str(self.body['L_wrist']['z']), 
+                                            [self.body['L_wrist']['x'], self.body['L_wrist']['y']],
+                                            fontFace=cv2.FONT_HERSHEY_COMPLEX, 
+                                            fontScale=1, 
+                                            color=(0,255,255), thickness=2)
+                self.vis_POSE = cv2.putText(self.vis_POSE,
+                                            str(self.body['R_wrist']['z']), 
+                                            [self.body['R_wrist']['x'], self.body['R_wrist']['y']], 
+                                            fontFace=cv2.FONT_HERSHEY_COMPLEX, 
+                                            fontScale=1, 
+                                            color=(0,255,255), thickness=2) """
                 
                 self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
 
@@ -507,19 +603,27 @@ class SingleImageAlphaPose():
                 #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
                 
                 for key, joint in self.body.items():
-                    bodyxyz = self.uv_to_XY(self.body['body']['x'], self.body['body']['y'], self.body['body']['z'])
+                    jointx = self.GetMoveAvg(joint['qx'])
+                    #print(jointx)
+                    jointy = self.GetMoveAvg(joint['qy'])
+                    #print(jointy)
+                    jointz = self.GetMoveAvg(joint['qz'])
+                    #print(jointz)
 
-                    self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=self.body['body']['cf']) 
+                    jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
+                    #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
+
+                    """ self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=self.body['body']['cf']) 
                     transform = self.GetCameraTrans('world','body_default')
                     cameratrans = self.GetCameraTrans('world', 'panda_2/realsense')
                     self.camerarot = [cameratrans.rotation.x, cameratrans.rotation.y, cameratrans.rotation.z, cameratrans.rotation.w]
-                    print(f'{Fore.CYAN}{cameratrans}')
+                    #print(f'{Fore.CYAN}{cameratrans}')
                     rotation = q2r([transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z])
                     tr = np.eye(3)
-                    tr = np.transpose(rotation)
+                    tr = np.transpose(rotation) """
                     
                     #TODO: Popravi zanko, da ne bo posiljala translacije
-                    if joint['cf'] and key != 'body':
+                    """ if joint['cf'] and key != 'body':
                         if joint['pf'] == 'body_default':
                             posfin = np.eye(3)@tr
                             q_fin = r2q(posfin)
@@ -534,9 +638,14 @@ class SingleImageAlphaPose():
                                     transJoint = joint['transj']
                                 else:
                                     transJoint = [0,0,0]
-                                self.SendTransform2tf(p=transJoint, q=rotJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
+                                self.SendTransform2tf(p=transJoint, q=rotJoint, parent_frame=joint['pf'], child_frame=joint['cf']) """
+                    if joint['cf'] != None:
+                        #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
+                        self.SendTransform2tf(p=jointxyz, parent_frame='panda_2/realsense', child_frame=(joint['cf']+'/rs'))
+                        self.GetCameraTrans(joint['cf']+'/rs', 'world')
 
                 if self.args.circles == True:
+                    
                     self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
@@ -568,6 +677,11 @@ class SingleImageAlphaPose():
         trans= self.tfbuffer.lookup_transform(from_sys, to_sys, rospy.Time())
         transform = trans.transform
         return transform
+
+    def GetMoveAvg(self, axis:np.ndarray):
+        
+        return axis.mean()
+
         
     #TODO: Napisi funkcijo, ki bo trensformirala samo rotacije na bazi pravil, ki jih mas na listu
 
@@ -615,7 +729,7 @@ class SingleImageAlphaPose():
         diff =self.uv_to_XY(curJoint['x']-parent['x'],
                             curJoint['y']-parent['y'],
                             curJoint['z']-parent['z'])    
-        print(diff)
+        #print(diff)
         return [0, diff[0]*10, diff[1]*10]
 
     def depth_remap(self, depth):
@@ -625,8 +739,9 @@ class SingleImageAlphaPose():
         self.remapped = (depth * self.range_depth) / self.range_16b 
 
         #return self.remapped
-        return self.remapped/20 + 0.3
-    
+        #return self.remapped/20 + 0.3
+        return depth/1000
+
     def uv_to_XY(self, u,v, z):
         """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
         fx = 607.167297
