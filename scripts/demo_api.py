@@ -497,9 +497,9 @@ class SingleImageAlphaPose():
         self.tfbuffer = tf2_ros.Buffer()
         self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
 
-        self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
-        self.sub_POSE = rospy.Subscriber("/realsense_top/color/image_raw", Image, self.pose_CB)
-        self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
+        self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         rospy.spin()
@@ -568,9 +568,12 @@ class SingleImageAlphaPose():
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     
-
+                self.vis_POSE = self.markerz(self.vis_POSE)
+                #print(f"{Fore.GREEN}{self.vis_POSE}")
             else:
                 print(f"{Fore.RED} No pose detected...")
+
+            
 
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
@@ -712,6 +715,48 @@ class SingleImageAlphaPose():
                 self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
 
             self.pub_DEPTH.publish(self.out_DEPTH)
+
+    def markerz(self, image:np.ndarray)->np.ndarray:
+        print(type(image))
+        markerLib = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_100)
+        #params = cv2.aruco.getDetectorParameters()
+        print(markerLib)
+        (corners, ids, rejected) = cv2.aruco.detectMarkers(image, markerLib)
+        print(corners)
+        if len(corners) > 0:
+            # flatten the ArUco IDs list
+            ids = np.ndarray.flatten(ids)
+            # loop over the detected ArUCo corners
+            for (markerCorner, markerID) in zip(corners, ids):
+                # extract the marker corners (which are always returned in
+                # top-left, top-right, bottom-right, and bottom-left order)
+                corners = markerCorner.reshape((4, 2))
+                (topLeft, topRight, bottomRight, bottomLeft) = corners
+                # convert each of the (x, y)-coordinate pairs to integers
+                topRight = (int(topRight[0]), int(topRight[1]))
+                bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
+                bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
+                topLeft = (int(topLeft[0]), int(topLeft[1]))
+
+                # draw the bounding box of the ArUCo detection
+                cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
+                cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
+                cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
+                cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
+                # compute and draw the center (x, y)-coordinates of the ArUco
+                # marker
+                cX = int((topLeft[0] + bottomRight[0]) / 2.0)
+                cY = int((topLeft[1] + bottomRight[1]) / 2.0)
+                cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
+                # draw the ArUco marker ID on the image
+                cv2.putText(image, str(markerID),
+                    (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
+                    0.5, (0, 255, 0), 2)
+                print("[INFO] ArUco marker ID: {}".format(markerID))
+                # show the output image
+                print(type(image))
+                return image
+
 
     def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
         
@@ -955,4 +1000,6 @@ class SingleImageAlphaPose():
 
 
 if __name__ == "__main__":
+    print('version:', sys.version)
+    print('info', sys.version_info)
     SingleImageAlphaPose(args, cfg)
