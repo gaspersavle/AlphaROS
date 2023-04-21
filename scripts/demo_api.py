@@ -28,7 +28,7 @@ import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
-from sensor_msgs.msg import Image
+from sensor_msgs.msg import Image, CameraInfo
 from cv_bridge import CvBridge   
 import colorama
 from colorama import Fore, Style
@@ -79,11 +79,14 @@ parser.add_argument('--circles', default = False, action = 'store_true',
                     help='draw circles arround wrists')
 parser.add_argument('--depth', default = False, action = 'store_true',
                     help='display wrist proximity')
+parser.add_argument('--dict', type=str, help='Specify which aruco dictionary is used to determine camera pose',
+                    default='DICT_5X5_100')
 """----------------------------- Tracking options -----------------------------"""
 parser.add_argument('--pose_flow', dest='pose_flow',
                     help='track humans in video with PoseFlow', action='store_true', default=False)
 parser.add_argument('--pose_track', dest='pose_track',
                     help='track humans in video with reid', action='store_true', default=False)
+
 
 args = parser.parse_args()
 cfg = update_config(args.cfg)
@@ -323,6 +326,10 @@ class SingleImageAlphaPose():
         self.poseNode = '/realsense/alphapose/enable'
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
         self.create_service_client()
+        self.arucoInit(args.dict)
+        self.rvec = np.zeros((3,1))
+        self.tvec = np.zeros((3,1)) 
+        
         #self.config = update_config(config_file='config.yaml')
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
@@ -496,12 +503,13 @@ class SingleImageAlphaPose():
         self.transmsg = geometry_msgs.msg.TransformStamped()
         self.tfbuffer = tf2_ros.Buffer()
         self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
-
-        self.maxDEPTH = rospy.get_param("/realsense/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
-        self.sub_POSE = rospy.Subscriber("/realsense/color/image_raw", Image, self.pose_CB)
-        self.sub_DEPTH = rospy.Subscriber("/realsense/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        self.camInfo('/realsense_top/color')
+        self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
+        self.sub_POSE = rospy.Subscriber("/realsense_top/color/image_raw", Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
+        
         rospy.spin()
         ####################################################################################
 
@@ -567,14 +575,14 @@ class SingleImageAlphaPose():
                 if self.args.circles == True:
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    
-                self.vis_POSE = self.markerz(self.vis_POSE)
+                
                 #print(f"{Fore.GREEN}{self.vis_POSE}")
             else:
                 print(f"{Fore.RED} No pose detected...")
+                
 
             
-
+            self.vis_POSE = self.markerHandler(self.vis_POSE)
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
 
@@ -678,7 +686,7 @@ class SingleImageAlphaPose():
                                     transJoint = [0,0,0]
                                 self.SendTransform2tf(p=transJoint, q=rotJoint, parent_frame=joint['pf'], child_frame=joint['cf']) """
                     if joint['cf'] != None:
-                        self.SendTransform2tf(p=jointxyz, parent_frame='panda_2/realsense', child_frame=(joint['cf']+'/rs'))
+                        self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
                         if key == 'body':
                             transToWorld = self.GetCameraTrans('world',joint['cf']+'/rs')
                             transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
@@ -716,47 +724,147 @@ class SingleImageAlphaPose():
 
             self.pub_DEPTH.publish(self.out_DEPTH)
 
-    def markerz(self, image:np.ndarray)->np.ndarray:
-        print(type(image))
-        markerLib = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_100)
-        #params = cv2.aruco.getDetectorParameters()
-        print(markerLib)
-        (corners, ids, rejected) = cv2.aruco.detectMarkers(image, markerLib)
-        print(corners)
-        if len(corners) > 0:
-            # flatten the ArUco IDs list
-            ids = np.ndarray.flatten(ids)
+    def arucoInit(self,dict):
+        ARUCO_DICT = {
+        "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
+        "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
+        "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
+        "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
+        "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
+        "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
+        "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
+        "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
+        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
+        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
+        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
+        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
+        "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
+        "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
+        "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
+        "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
+        "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
+        "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
+        "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
+        "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
+        "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
+        }
+
+        self.arucoDict = ARUCO_DICT[dict]
+
+    def markerHandler(self, image:np.ndarray)->np.ndarray:
+        markerLib = cv2.aruco.Dictionary_get(self.arucoDict)
+        params = cv2.aruco.DetectorParameters_create()
+        #print('Params: ', params)
+        #detImage = cv2.flip(image, -1)
+        (corners, ids, rejected) = cv2.aruco.detectMarkers(image, markerLib,
+	    parameters=params)
+
+        #print(f"{Fore.GREEN}Corner: {corners}{type(corners)}")
+        #print(f"{Fore.BLUE}ID: {ids}{type(ids)}")
+        #print(f"{Fore.RED}Rej: {rejected}{type(rejected)}")
+
+        if (corners != None) and (len(corners) > 0):
             # loop over the detected ArUCo corners
-            for (markerCorner, markerID) in zip(corners, ids):
-                # extract the marker corners (which are always returned in
-                # top-left, top-right, bottom-right, and bottom-left order)
-                corners = markerCorner.reshape((4, 2))
+            i = 0
+            marker = []
+            ids = np.ndarray.flatten(ids)
+            if len(corners) == 8:
+                self.corners = np.asfarray(corners).reshape(32,2)
+            #print(self.corners.shape, self.corners)
+            for (id, corner) in zip(ids,corners):
+                corners = corner.reshape((4, 2))
+                
                 (topLeft, topRight, bottomRight, bottomLeft) = corners
                 # convert each of the (x, y)-coordinate pairs to integers
-                topRight = (int(topRight[0]), int(topRight[1]))
-                bottomRight = (int(bottomRight[0]), int(bottomRight[1]))
-                bottomLeft = (int(bottomLeft[0]), int(bottomLeft[1]))
-                topLeft = (int(topLeft[0]), int(topLeft[1]))
-
+                topRight = [int(topRight[0]), int(topRight[1])]
+                bottomRight = [int(bottomRight[0]), int(bottomRight[1])]
+                bottomLeft = [int(bottomLeft[0]), int(bottomLeft[1])]
+                topLeft = [int(topLeft[0]), int(topLeft[1])]
+                #print(topLeft)
                 # draw the bounding box of the ArUCo detection
                 cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
                 cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
                 cv2.line(image, bottomRight, bottomLeft, (0, 255, 0), 2)
                 cv2.line(image, bottomLeft, topLeft, (0, 255, 0), 2)
-                # compute and draw the center (x, y)-coordinates of the ArUco
-                # marker
                 cX = int((topLeft[0] + bottomRight[0]) / 2.0)
                 cY = int((topLeft[1] + bottomRight[1]) / 2.0)
                 cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
-                # draw the ArUco marker ID on the image
-                cv2.putText(image, str(markerID),
+                cv2.putText(image, str(id),
                     (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (0, 255, 0), 2)
-                print("[INFO] ArUco marker ID: {}".format(markerID))
-                # show the output image
-                print(type(image))
-                return image
+                #self.corners = np.stack(self.corners, marker)
+                
+                
 
+                i+=1
+                
+            #print(self.corners)
+            self.corners = np.asarray(self.corners)
+            self.camTest()
+            return image 
+
+    def camInfo(self, caamera_topic:str):
+        caminfo = rospy.wait_for_message(caamera_topic+'/camera_info', CameraInfo, timeout=20)
+        self.camera_fx = caminfo.K[0]
+        self.camera_cx = caminfo.K[2]
+        self.camera_fy = caminfo.K[4]
+        self.camera_cy = caminfo.K[5]
+
+        self.cameramatrix = np.array([[self.camera_fx, 0.0, self.camera_cx],
+                                    [0.0, self.camera_fy, self.camera_cy],
+                                    [0.0, 0.0, 1.0]],dtype=np.float32)
+
+        self.distCoefs = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        
+    
+    def camTest(self):
+        obj_pts = np.array([[-0.2,0.299, 0.825], # marker 1
+                    [-0.2,0.199, 0.825],
+                    [-0.3,0.199, 0.825],
+                    [-0.3,0.299, 0.825],
+
+                    [0.3,0.299, 0.825], # marker 2
+                    [0.3,0.199, 0.825],
+                    [0.2,0.199, 0.825],
+                    [0.2,0.299,0.825],
+                    
+                    [0.4,0.899,0.825], # marker 3
+                    [0.4,0.799,0.825],
+                    [0.3,0.799,0.825],
+                    [0.3,0.899,0.825],
+                    
+                    [0.9,0.399,0.825], # marker 4
+                    [0.9,0.299,0.825],
+                    [0.8,0.299,0.825],
+                    [0.8,0.399,0.825],
+
+                    [-0.2,0.999,0.825], # marker 5
+                    [-0.2,0.899,0.825],
+                    [-0.3,0.899,0.825],
+                    [-0.3,0.999,0.825],
+
+                    [0.3,0.999,0.825], # marker 6
+                    [0.3,0.899,0.825],
+                    [0.2,0.899,0.825],
+                    [0.2,0.999,0.825],
+
+                    [0.4,0.999,0.825], # marker 7
+                    [0.4,0.899,0.825],
+                    [0.3,0.899,0.825],
+                    [0.3,0.999,0.825],
+
+                    [0.9,1.499,0.825], # marker 8
+                    [0.9,1.399,0.825],
+                    [0.8,1.399,0.825],
+                    [0.8,1.499,0.825]
+                    ], dtype=np.float32)
+
+        #print(self.corners)
+        flag = cv2.SOLVEPNP_ITERATIVE 
+        if len(self.corners) == 32:
+            retval,  rvec, tvec = cv2.solvePnP(obj_pts, self.corners, self.cameramatrix, self.distCoefs, self.rvec, self.tvec, flags=flag)
+            print(rvec)
+        self.SendTransform2tf(p=[tvec[1], tvec[0], tvec[2]], q=[1, rvec[0][0], rvec[1][0], rvec[2][0]], parent_frame='world', child_frame='rs_top')
 
     def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
         
@@ -776,7 +884,7 @@ class SingleImageAlphaPose():
 
         self.pub_TRANS_POSE.sendTransform(self.transmsg)
 
-    def GetCameraTrans(self, from_sys, to_sys):
+    def GetCameraTrans(self, from_sys:str, to_sys:str):
         trans= self.tfbuffer.lookup_transform(from_sys, to_sys, rospy.Time())
         transform = trans.transform
         return transform
@@ -785,10 +893,8 @@ class SingleImageAlphaPose():
         
         return axis.mean()
 
-        
-    #TODO: Napisi funkcijo, ki bo trensformirala samo rotacije na bazi pravil, ki jih mas na listu
 
-    def getRot(self, joint:str):
+    def getRot(self, joint:str) -> np.ndarray:
         curJoint = self.body[joint]
         
         if curJoint['lower_j'] != None:
@@ -828,7 +934,7 @@ class SingleImageAlphaPose():
         else:
             return r2q(np.eye(3))
 
-    def getTrans(self, joint:str):
+    def getTrans(self, joint:str) -> list:
         curJoint = self.body[joint]
         parent = self.body[curJoint['parent']]
         #print(lowJoint)
@@ -838,7 +944,7 @@ class SingleImageAlphaPose():
         #print(diff)
         return [0, diff[0]*10, diff[1]*10]
 
-    def depth_remap(self, depth):
+    def depth_remap(self, depth) -> float:
         self.adj_DEPTH = 65536- depth
         self.range_16b = 65536
         self.range_depth = 300 - 3
@@ -848,21 +954,18 @@ class SingleImageAlphaPose():
         #return self.remapped/20 + 0.3
         return depth/1000
 
-    def uv_to_XY(self, u,v, z):
+    def uv_to_XY(self, u:int,v:int, z:int) -> list:
         """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
         #print(f"{Fore.GREEN}U: {u}\nV: {v}\nZ: {z}")
-        fx = 607.167297
-        fy = 608.291809
-
-        x = (u - (326.998790)) / fx
-        y = (v - (244.887363)) / fy
+        x = (u - (self.camera_cx)) / self.camera_fx
+        y = (v - (self.camera_cy)) / self.camera_fy
 
         X = (z * x)
         Y = (z * y)
         Z = z
         return [X, Y, Z]
 
-    def transToParent_xyz(self, parent:str, child:str):
+    def transToParent_xyz(self, parent:str, child:str) -> list:
         parentlink = self.body[parent]
         joint = self.body[child]
         jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
