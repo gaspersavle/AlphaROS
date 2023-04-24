@@ -778,7 +778,8 @@ class SingleImageAlphaPose():
             i = 0
             marker = []
             ids = np.ndarray.flatten(ids)
-            self.cornerdict = {1: None,
+            # A dictionary storing the corners of each detected marker as an array of 4
+            self.cornerDict = {1: None,
                                     2: None,
                                     3: None,
                                     4: None,
@@ -792,7 +793,7 @@ class SingleImageAlphaPose():
             print(self.corners.shape, self.corners)
             for (id, corner) in zip(ids,corners):
                 corners = corner.reshape((4, 2))
-                self.cornerdict[id] = np.roll(np.asfarray(corners), -1)
+                self.cornerDict[id] = np.roll(np.asfarray(corners), -1)
                 
                 (topLeft, topRight, bottomRight, bottomLeft) = corners
                 # convert each of the (x, y)-coordinate pairs to integers
@@ -877,8 +878,43 @@ class SingleImageAlphaPose():
                     [0.8,1.399,0.825],
                     [0.8,1.499,0.825]
                     ], dtype=np.float32)
-        for marker, corners in self.cornerdict.items():
-            if corners.any() != None:
+        
+        markerDict= {1:[[-0.2,0.299, 0.825],
+                        [-0.2,0.199, 0.825], 
+                        [-0.3,0.199, 0.825], 
+                        [-0.3,0.299, 0.825]],
+                    2: [[0.3,0.299, 0.825], # marker 2
+                        [0.3,0.199, 0.825],
+                        [0.2,0.199, 0.825],
+                        [0.2,0.299,0.825]],
+                    3: [[0.4,0.899,0.825], # marker 3
+                        [0.4,0.799,0.825],
+                        [0.3,0.799,0.825],
+                        [0.3,0.899,0.825]],
+                    4: [[0.9,0.399,0.825], # marker 4
+                        [0.9,0.299,0.825],
+                        [0.8,0.299,0.825],
+                        [0.8,0.399,0.825]],
+                    5: [[-0.2,0.999,0.825],
+                        [-0.2,0.899,0.825],
+                        [-0.3,0.899,0.825],
+                        [-0.3,0.999,0.825]],
+                    6: [[0.3,0.999,0.825], # marker 6
+                        [0.3,0.899,0.825],
+                        [0.2,0.899,0.825],
+                        [0.2,0.999,0.825]],
+                    7: [[0.4,0.999,0.825], # marker 7
+                        [0.4,0.899,0.825],
+                        [0.3,0.899,0.825],
+                        [0.3,0.999,0.825]],
+                    8: [[0.9,1.499,0.825], # marker 8
+                        [0.9,1.399,0.825],
+                        [0.8,1.399,0.825],
+                        [0.8,1.499,0.825]]}
+        markerArray = np.zeros(8)
+        for marker, corners in self.cornerDict.items():
+            if self.cornerDict[marker] != None:
+
                 print(f"{Fore.GREEN}{corners}")
             else:
                 print(f"{Fore.RED}{corners}")
