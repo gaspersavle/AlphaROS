@@ -323,9 +323,14 @@ class SingleImageAlphaPose():
         self.cfg = cfg
         self.image = None
         self.enablePose = False
+        self.enableCamPose = True
         self.poseNode = '/realsense/alphapose/enable'
+        self.camPoseNode = '/realsense_top/get_pose'
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
-        self.create_service_client()
+        rospy.Service(self.camPoseNode, SetBool, self.enableCamPose_CB)
+
+        self.create_service_client(self.poseNode)
+        self.create_service_client(self.camPoseNode)
         self.arucoInit(args.dict)
         self.rvec = np.zeros((3,1))
         self.tvec = np.zeros((3,1)) 
@@ -504,11 +509,13 @@ class SingleImageAlphaPose():
         self.tfbuffer = tf2_ros.Buffer()
         self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
         self.camInfo('/realsense_top/color')
+        
         self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         self.sub_POSE = rospy.Subscriber("/realsense_top/color/image_raw", Image, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
+        
         
         rospy.spin()
         ####################################################################################
@@ -581,8 +588,8 @@ class SingleImageAlphaPose():
                 print(f"{Fore.RED} No pose detected...")
                 
 
+            self.markerHandler(image=self.vis_POSE)
             
-            self.vis_POSE = self.markerHandler(self.vis_POSE)
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
 
@@ -721,7 +728,10 @@ class SingleImageAlphaPose():
 
             else:
                 self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
-
+            if self.camPose != None:
+                self.SendTransform2tf(p=self.camPose, parent_frame="/world", child_frame="/rs_top")
+                # q=self.camRot,
+                
             self.pub_DEPTH.publish(self.out_DEPTH)
 
     def arucoInit(self,dict):
@@ -751,10 +761,10 @@ class SingleImageAlphaPose():
 
         self.arucoDict = ARUCO_DICT[dict]
 
-    def markerHandler(self, image:np.ndarray)->np.ndarray:
+    def markerHandler(self, image:np.ndarray):
         markerLib = cv2.aruco.Dictionary_get(self.arucoDict)
         params = cv2.aruco.DetectorParameters_create()
-        #print('Params: ', params)
+        #print('Refinement: ', params.cornerRefinementMethod)
         #detImage = cv2.flip(image, -1)
         (corners, ids, rejected) = cv2.aruco.detectMarkers(image, markerLib,
 	    parameters=params)
@@ -768,11 +778,21 @@ class SingleImageAlphaPose():
             i = 0
             marker = []
             ids = np.ndarray.flatten(ids)
-            if len(corners) == 8:
-                self.corners = np.asfarray(corners).reshape(32,2)
-            #print(self.corners.shape, self.corners)
+            self.cornerdict = {1: None,
+                                    2: None,
+                                    3: None,
+                                    4: None,
+                                    5: None,
+                                    6: None,
+                                    7: None,
+                                    8: None}
+            #if len(corners) == 8:
+            self.corners = np.asfarray(corners)#.reshape(32,2)
+                
+            print(self.corners.shape, self.corners)
             for (id, corner) in zip(ids,corners):
                 corners = corner.reshape((4, 2))
+                self.cornerdict[id] = np.roll(np.asfarray(corners), -1)
                 
                 (topLeft, topRight, bottomRight, bottomLeft) = corners
                 # convert each of the (x, y)-coordinate pairs to integers
@@ -792,19 +812,18 @@ class SingleImageAlphaPose():
                 cv2.putText(image, str(id),
                     (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (0, 255, 0), 2)
-                #self.corners = np.stack(self.corners, marker)
-                
-                
-
                 i+=1
-                
-            #print(self.corners)
-            self.corners = np.asarray(self.corners)
-            self.camTest()
-            return image 
 
-    def camInfo(self, caamera_topic:str):
-        caminfo = rospy.wait_for_message(caamera_topic+'/camera_info', CameraInfo, timeout=20)
+            #print(f"{Fore.CYAN}{self.corners}")
+            #print(self.cornerdict)
+            self.camPose, self.camRot = self.getCamPose()
+            print(f"{Fore.GREEN}ROTmat: {self.camRot}")
+            self.enableCamPose = False
+            
+            return 
+
+    def camInfo(self, camera_topic:str):
+        caminfo = rospy.wait_for_message(camera_topic+'/camera_info', CameraInfo, timeout=20)
         self.camera_fx = caminfo.K[0]
         self.camera_cx = caminfo.K[2]
         self.camera_fy = caminfo.K[4]
@@ -817,7 +836,7 @@ class SingleImageAlphaPose():
         self.distCoefs = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
         
     
-    def camTest(self):
+    def getCamPose(self):
         obj_pts = np.array([[-0.2,0.299, 0.825], # marker 1
                     [-0.2,0.199, 0.825],
                     [-0.3,0.199, 0.825],
@@ -858,13 +877,23 @@ class SingleImageAlphaPose():
                     [0.8,1.399,0.825],
                     [0.8,1.499,0.825]
                     ], dtype=np.float32)
+        for marker, corners in self.cornerdict.items():
+            if corners.any() != None:
+                print(f"{Fore.GREEN}{corners}")
+            else:
+                print(f"{Fore.RED}{corners}")
 
         #print(self.corners)
         flag = cv2.SOLVEPNP_ITERATIVE 
-        if len(self.corners) == 32:
-            retval,  rvec, tvec = cv2.solvePnP(obj_pts, self.corners, self.cameramatrix, self.distCoefs, self.rvec, self.tvec, flags=flag)
-            print(rvec)
-        self.SendTransform2tf(p=[tvec[1], tvec[0], tvec[2]], q=[1, rvec[0][0], rvec[1][0], rvec[2][0]], parent_frame='world', child_frame='rs_top')
+        retval,  rvec, tvec = cv2.solvePnP(obj_pts, self.corners, self.cameramatrix, self.distCoefs, self.rvec, self.tvec, flags=flag)
+        print(f"{Fore.LIGHTCYAN_EX}Entering calib...{rvec}")
+        rotm = np.zeros((3,3)) 
+        cv2.Rodrigues(rvec, rotm)
+        rotq = r2q(rotm)
+        print('RotQ: ',rotq, 'RotM: ',rotm )
+        # q=[1, rvec[0][0], rvec[1][0], rvec[2][0]],
+        return [tvec[1], tvec[0], tvec[2]], rotq
+        
 
     def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
         
@@ -997,13 +1026,25 @@ class SingleImageAlphaPose():
             msg = self.poseNode + " stopped."
         return True, msg
 
-    def create_service_client(self):
+    def enableCamPose_CB(self, req):
+        state = req.data
+        if state:
+            print("Camera pose estimation: starting...")
+            self.enableCamPose = True
+            msg = self.camPoseNode + " started."
+        else:
+            print("Camera pose estimation: stopping...")
+            self.enableCamPose = False
+            msg = self.camPoseNode + " stopped."
+        return True, msg
+
+    def create_service_client(self, node):
         try:
-            print("waiting for service:" + self.poseNode)
-            rospy.wait_for_service(self.poseNode, 2) # 2 seconds
+            print("waiting for service:" + node)
+            rospy.wait_for_service(node, 2) # 2 seconds
         except rospy.ROSException as e:
-            print("Couldn't find to service! " + self.poseNode)
-        self.camera_service = rospy.ServiceProxy(self.poseNode, SetBool)
+            print("Couldn't find service! " + node)
+        self.camera_service = rospy.ServiceProxy(node, SetBool)
 
     def process(self, im_name, image):
         # Init data writer
