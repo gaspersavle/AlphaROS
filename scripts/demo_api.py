@@ -607,12 +607,12 @@ class SingleImageAlphaPose():
                 for key, joint in self.body.items():
                     #print(key)
                     if joint['y'] >= 480:
-                        joint['z'] = self.depth_remap(self.img_blur_DEPTH[479, int(joint['x'])])
+                        joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]/1000
                         #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
                     elif joint['x'] >= 640:
-                        joint['z'] = self.depth_remap(self.img_blur_DEPTH[int(joint['y']), 639])
+                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), 639]/1000
                     else:
-                        joint['z'] = self.depth_remap(self.img_blur_DEPTH[int(joint['y']), int(joint['x'])])
+                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
                         #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
                     #print('Joint z: ', joint['z'])
                     np.roll(joint['qx'],-1)
@@ -631,20 +631,7 @@ class SingleImageAlphaPose():
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
-                #print(f"{Fore.GREEN} Max depth: {np.ndarray.max(self.img_DEPTH)} {Fore.RED} | Min depth: {np.ndarray.min(self.img_DEPTH)}")
-                """ self.vis_POSE = cv2.putText(self.vis_POSE, 
-                                            str(self.body['L_wrist']['z']), 
-                                            [self.body['L_wrist']['x'], self.body['L_wrist']['y']],
-                                            fontFace=cv2.FONT_HERSHEY_COMPLEX, 
-                                            fontScale=1, 
-                                            color=(0,255,255), thickness=2)
-                self.vis_POSE = cv2.putText(self.vis_POSE,
-                                            str(self.body['R_wrist']['z']), 
-                                            [self.body['R_wrist']['x'], self.body['R_wrist']['y']], 
-                                            fontFace=cv2.FONT_HERSHEY_COMPLEX, 
-                                            fontScale=1, 
-                                            color=(0,255,255), thickness=2) """
-                
+
                 self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
 
 
@@ -663,35 +650,7 @@ class SingleImageAlphaPose():
                     #print(jointz)
 
                     jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                    #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
 
-                    """ self.SendTransform2tf(p=bodyxyz, parent_frame='panda_2/realsense', child_frame=self.body['body']['cf']) 
-                    transform = self.GetCameraTrans('world','body_default')
-                    cameratrans = self.GetCameraTrans('world', 'panda_2/realsense')
-                    self.camerarot = [cameratrans.rotation.x, cameratrans.rotation.y, cameratrans.rotation.z, cameratrans.rotation.w]
-                    #print(f'{Fore.CYAN}{cameratrans}')
-                    rotation = q2r([transform.rotation.w, transform.rotation.x, transform.rotation.y, transform.rotation.z])
-                    tr = np.eye(3)
-                    tr = np.transpose(rotation) """
-                    
-                    #TODO: Popravi zanko, da ne bo posiljala translacije
-                    
-                    """ if joint['cf'] and key != 'body':
-                        if joint['pf'] == 'body_default':
-                            posfin = np.eye(3)@tr
-                            q_fin = r2q(posfin)
-                            #trans_joint_xyz = self.transToParent_xyz(parent=joint['parent'], child=key)
-                            #trans_joint_xyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                            self.SendTransform2tf(q=q_fin, parent_frame=joint['pf'], child_frame=joint['cf'])
-                        else:
-                            #and joint['rot_y'] == False and joint['rot_z'] == False
-                            if joint['cf'] != None:
-                                rotJoint = self.getRot(joint=key)
-                                if joint['transj'] != None:
-                                    transJoint = joint['transj']
-                                else:
-                                    transJoint = [0,0,0]
-                                self.SendTransform2tf(p=transJoint, q=rotJoint, parent_frame=joint['pf'], child_frame=joint['cf']) """
                     if joint['cf'] != None:
                         self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
                         if key == 'body':
@@ -734,7 +693,16 @@ class SingleImageAlphaPose():
                 
             self.pub_DEPTH.publish(self.out_DEPTH)
 
-    def arucoInit(self,dict):
+    def arucoInit(self,dict:str):
+        """
+        This function initialises the ArUco dictionaries and prepares the one
+        that will be used program-wide
+
+        Args
+        ----
+            dict(str) : Specifies the dictionary we want to use
+        """
+        
         ARUCO_DICT = {
         "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
         "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
@@ -762,6 +730,18 @@ class SingleImageAlphaPose():
         self.arucoDict = ARUCO_DICT[dict]
 
     def markerHandler(self, image:np.ndarray):
+        """
+        This function detects ArUco markers from an image, draws them
+        onto the original image and stores their coordinates in a dictionary.
+
+        Aditionally the function calls  ```getCameraPose()```
+
+        It can be configured to output the drawn-on image
+
+        Args
+        ----
+            image(np.ndarray) : Input image
+        """
         markerLib = cv2.aruco.Dictionary_get(self.arucoDict)
         params = cv2.aruco.DetectorParameters_create()
         #print('Refinement: ', params.cornerRefinementMethod)
@@ -820,10 +800,20 @@ class SingleImageAlphaPose():
             self.camPose, self.camRot = self.getCamPose()
             print(f"{Fore.GREEN}ROTmat: {self.camRot}")
             self.enableCamPose = False
-            
-            return 
+
 
     def camInfo(self, camera_topic:str):
+        """
+        This function pulls camera parameters from the "/camera_info" topic
+        - Camera matrix 
+            - focal lengths: fx, fy
+            - optical centres: cx, cy
+        - Distortion coefficients
+
+        Args
+        ----
+            camera_topic (str) : Specify from which camera we should pull the parameters
+        """
         caminfo = rospy.wait_for_message(camera_topic+'/camera_info', CameraInfo, timeout=20)
         self.camera_fx = caminfo.K[0]
         self.camera_cx = caminfo.K[2]
@@ -838,6 +828,24 @@ class SingleImageAlphaPose():
         
     
     def getCamPose(self):
+        """ 
+        This function converts image and actual locations
+        of ArUco markers from dictionaries to np.arrays
+
+        It only takes into account the values of markers,
+        that were detected, therefore avoiding any false results
+        and jitter that may come from spotty marker detection.
+
+        After the conversion it calculates the camera position.
+
+        Returns
+        -------
+            (list):  Translation vector from the world origin to the camera
+
+            (list): Rotation quaternions of the camera with respect to the world origin
+                [w, Rot_X, Rot_Y, Rot_Z]
+
+        """
         obj_pts = np.array([[-0.2,0.299, 0.825], # marker 1
                     [-0.2,0.199, 0.825],
                     [-0.3,0.199, 0.825],
@@ -911,6 +919,9 @@ class SingleImageAlphaPose():
                         [0.9,1.399,0.825],
                         [0.8,1.399,0.825],
                         [0.8,1.499,0.825]]}
+        #####################################
+        ####### CHECK tfDicTEST.py ##########
+        #####################################
         markerArray = np.zeros(8)
         for marker, corners in self.cornerDict.items():
             if self.cornerDict[marker] != None:
@@ -931,8 +942,20 @@ class SingleImageAlphaPose():
         return [tvec[1], tvec[0], tvec[2]], rotq
         
 
-    def SendTransform2tf(self, p=[0,0,0],q=[1,0,0,0], parent_frame = "panda_2/realsense",child_frame="Human_Pose"):
-        
+    def SendTransform2tf(self, p:list=[0,0,0],q:list=[1,0,0,0], parent_frame:str= "panda_2/realsense",child_frame:str="Human_Pose"):
+        """
+        This functions publishes a point to a TF topic, the point can be seen in RViz
+
+        Args
+        ----
+            p(list) : Translation vector [x, y, z]
+
+            q(list) : Quaternion rotation vector [w, Rot_X, Rot_Y, Rot_Z]
+
+            parent_frame(str) : The point with respect to which we specify the translation vector
+
+            child_frame(str) : The name of the resulting TF point
+        """
         self.transmsg.header.stamp = rospy.Time.now()
         self.transmsg.header.frame_id = parent_frame
 
@@ -950,6 +973,19 @@ class SingleImageAlphaPose():
         self.pub_TRANS_POSE.sendTransform(self.transmsg)
 
     def GetCameraTrans(self, from_sys:str, to_sys:str):
+        """
+        This functon looks up the transform from any specified frame to any other specified frame
+
+        Args
+        ----
+            from_sys(str) : Origin frame
+
+            to_sys(str) : Destination frame
+
+        Returns
+        ------
+            transformation : Transformation matrix from specified frame to specified frame
+        """
         trans= self.tfbuffer.lookup_transform(from_sys, to_sys, rospy.Time())
         transform = trans.transform
         return transform
@@ -960,6 +996,18 @@ class SingleImageAlphaPose():
 
 
     def getRot(self, joint:str) -> np.ndarray:
+        """
+        This function calculates joint angles for the URDF human model from
+        the calculated/measured locations of hte keypoints
+
+        Args
+        ----
+            joint(str) : Specifies for which joint the angle is being calculated
+
+        Returns
+        -------
+            outRot(np,ndarray) : Rotation matrix of the specified joint
+        """
         curJoint = self.body[joint]
         
         if curJoint['lower_j'] != None:
@@ -975,7 +1023,7 @@ class SingleImageAlphaPose():
                 rot = math.atan(dx/dy)
                 if curJoint['neg']:
                     rot = -rot
-                return r2q(rot_x(rot))
+                outRot = r2q(rot_x(rot))
             
             if curJoint['rot_y']:
                 #print('Cur: ', curPos)
@@ -985,7 +1033,7 @@ class SingleImageAlphaPose():
                 rot = math.atan(dz/dy)
                 if curJoint['neg']:
                     rot = -rot
-                return r2q(rot_y(rot))
+                outRot = r2q(rot_y(rot))
             
             if curJoint['rot_z']:
                 dx = curPos[0] - lowPos[0]
@@ -993,62 +1041,39 @@ class SingleImageAlphaPose():
                 rot = math.atan(dx/dz)
                 if curJoint['neg']:
                     rot = -rot
-                return r2q(rot_z(rot))
-            
-            return r2q(np.eye(3))
+                outRot = r2q(rot_z(rot))
         else:
-            return r2q(np.eye(3))
+            outRot = r2q(np.eye(3))
 
-    def getTrans(self, joint:str) -> list:
-        curJoint = self.body[joint]
-        parent = self.body[curJoint['parent']]
-        #print(lowJoint)
-        diff =self.uv_to_XY(curJoint['x']-parent['x'],
-                            curJoint['y']-parent['y'],
-                            curJoint['z']-parent['z'])    
-        #print(diff)
-        return [0, diff[0]*10, diff[1]*10]
-
-    def depth_remap(self, depth) -> float:
-        self.adj_DEPTH = 65536- depth
-        self.range_16b = 65536
-        self.range_depth = 300 - 3
-        self.remapped = (depth * self.range_depth) / self.range_16b 
-
-        #return self.remapped
-        #return self.remapped/20 + 0.3
-        return depth/1000
+        return outRot
 
     def uv_to_XY(self, u:int,v:int, z:int) -> list:
-        """Convert pixel coordinated (u,v) from realsense camera into real world coordinates X,Y,Z """
-        #print(f"{Fore.GREEN}U: {u}\nV: {v}\nZ: {z}")
+        """
+        Convert pixel coordinated (u,v) from realsense camera
+        into real world coordinates X,Y,Z 
+
+        Args
+        ----
+            u(int) : Horizontal coordinate
+
+            v(int) : Vertical coordinate
+
+            z(int) : Depth coordinate
+
+        Returns
+        -------
+            worldPos(list) : Real world position (in respect to camera)
+        """
+        
         x = (u - (self.camera_cx)) / self.camera_fx
         y = (v - (self.camera_cy)) / self.camera_fy
 
         X = (z * x)
         Y = (z * y)
         Z = z
-        return [X, Y, Z]
 
-    def transToParent_xyz(self, parent:str, child:str) -> list:
-        parentlink = self.body[parent]
-        joint = self.body[child]
-        jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-        parentxyz = self.uv_to_XY(parentlink['x'], parentlink['y'], parentlink['z'])
-        """ delta = [jointxyz[0]-parentxyz[0], jointxyz[1]-parentxyz[1], jointxyz[2]-parentxyz[2]]
-        result = []
-        print(parent)
-        print(child)
-        for i in range(len(delta)):
-            result.append(parentxyz[i] + delta[i])
-        return result """
-
-        dz = jointxyz[2] - parentxyz[2]
-        dx = jointxyz[0] - parentxyz[0]
-        dy = jointxyz[1] - parentxyz[1]
-        
-        return [0, 2*dy, 2*dz]
-
+        worldPos = [X, Y, Z]
+        return worldPos
     
     def enablePose_CB(self, req):
         state = req.data
