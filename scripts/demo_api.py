@@ -81,6 +81,8 @@ parser.add_argument('--depth', default = False, action = 'store_true',
                     help='display wrist proximity')
 parser.add_argument('--dict', type=str, help='Specify which aruco dictionary is used to determine camera pose',
                     default='DICT_5X5_100')
+parser.add_argument('--markers', help='TRUE -> Display markers all the time | FALSE -> Display markers only in calibration',
+                    default=False, action='store_true')
 """----------------------------- Tracking options -----------------------------"""
 parser.add_argument('--pose_flow', dest='pose_flow',
                     help='track humans in video with PoseFlow', action='store_true', default=False)
@@ -589,7 +591,7 @@ class SingleImageAlphaPose():
             else:
                 print(f"{Fore.RED} No pose detected...")
                 
-            if self.enableCamPose == True:
+            if self.enableCamPose == True or self.args.markers == True:
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
             
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
@@ -605,6 +607,13 @@ class SingleImageAlphaPose():
             #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
+
+            if self.camPose != None:
+                for key, item in self.markerDict.items():
+                    self.SendTransform2tf(p=item[0], parent_frame="/world", child_frame=("/marker_"+str(key)))
+                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
+                # q=self.camRot,
+                        
             if self.pose != None:
                 for key, joint in self.body.items():
                     #print(key)
@@ -653,6 +662,8 @@ class SingleImageAlphaPose():
 
                     jointxyz = self.uv_to_XY(jointx, jointy, jointz)
 
+                    
+
                     if joint['cf'] != None:
                         self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
                         if key == 'body':
@@ -690,11 +701,7 @@ class SingleImageAlphaPose():
             else:
                 self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
 
-            if self.camPose != None:
-                for key, item in self.markerDict.items():
-                    self.SendTransform2tf(p=item[0], parent_frame="/world", child_frame=("/marker_"+str(key)))
-                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
-                # q=self.camRot,
+            
                 
             self.pub_DEPTH.publish(self.out_DEPTH)
 
@@ -782,7 +789,7 @@ class SingleImageAlphaPose():
                 corners = corner.reshape((4, 2))
                 print(f"{Fore.YELLOW}Corners: {corners} | Type: {type(corners)}")
                 
-                (topRight, bottomRight, bottomLeft, topLeft) = corners
+                (topLeft, topRight, bottomRight, bottomLeft) = corners
                 # convert each of the (x, y)-coordinate pairs to integers
                 topRight = [int(topRight[0]), int(topRight[1])]
                 bottomRight = [int(bottomRight[0]), int(bottomRight[1])]
@@ -800,6 +807,8 @@ class SingleImageAlphaPose():
                 cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
                 cv2.circle(image, topRight, 4, (255, 0, 0), -1)
                 cv2.putText(image, str(id),
+
+                #cv2.aruco.drawAxis(image, self.cameramatrix, self.distCoefs, self.rvec, tvec, 0.1)
                     (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
                     0.5, (0, 255, 0), 2)
                 i+=1
@@ -832,6 +841,7 @@ class SingleImageAlphaPose():
 
             print(f"{Fore.CYAN}{self.cornerDict}")
             #print(self.cornerdict)
+
             self.camPose, self.camRot = self.getCamPose()
             #print(f"{Fore.GREEN}ROTmat: {self.camRot}")
             self.enableCamPose = False
@@ -886,6 +896,7 @@ class SingleImageAlphaPose():
                 [w, Rot_X, Rot_Y, Rot_Z]
 
         """
+        per = 0.0235
         obj_pts = np.array([[-0.2,0.3, 0.825], # marker 1
                     [-0.2,0.2, 0.825],
                     [-0.3,0.2, 0.825],
@@ -927,20 +938,20 @@ class SingleImageAlphaPose():
                     [0.8,1,0.825]
                     ], dtype=np.float32)
         
-        self.markerDict= {1:[[-0.2,0.3, 0.825], # marker 1
-                        [-0.2,0.2, 0.825],
-                        [-0.3,0.2, 0.825],
-                        [-0.3,0.3, 0.825]],
+        self.markerDict= {1:[[-0.2+per,0.3, 0.825], # marker 1
+                        [-0.2+per,0.2-per, 0.825],
+                        [-0.3+per,0.2-per, 0.825],
+                        [-0.3+per,0.3-per, 0.825]],
 
-                    2: [[0.3,0.3, 0.825], # marker 2
-                        [0.3,0.2, 0.825],
-                        [0.2,0.2, 0.825],
-                        [0.2,0.3,0.825]],
+                    2: [[0.3-per,0.3-per, 0.825], # marker 2
+                        [0.3-per,0.2-per, 0.825],
+                        [0.2-per,0.2-per, 0.825],
+                        [0.2-per,0.3-per,0.825]],
 
-                    3: [[0.4,0.4,0.825], # marker 3
-                        [0.4,0.3,0.825],
-                        [0.3,0.3,0.825],
-                        [0.3,0.4,0.825]],
+                    3: [[0.4+per,0.8-per,0.825], # marker 3
+                        [0.4+per,0.7-per,0.825],
+                        [0.3+per,0.7-per,0.825],
+                        [0.3+per,0.8-per,0.825]],
 
                     4: [[0.9,0.4,0.825], # marker 4
                         [0.9,0.3,0.825],
@@ -986,16 +997,16 @@ class SingleImageAlphaPose():
         flag = cv2.SOLVEPNP_ITERATIVE 
         print(f"{Fore.GREEN}Marker array: {markerArray}| Length: {Fore.LIGHTGREEN_EX}{markerArray.shape} | Type: {type(markerArray[0][0])}")
         print(f"{Fore.RED}Corner array: {cornerArray}| Length: {Fore.LIGHTRED_EX}{cornerArray.shape} | Type: {type(cornerArray[0][0])}")
-        retval, rvec, tvec = cv2.solvePnP(markerArray, cornerArray, self.cameramatrix, self.distCoefs, flags=flag)
+        retval, self.rvec, self.tvec = cv2.solvePnP(markerArray, cornerArray, self.cameramatrix, self.distCoefs, flags=flag)
         # retval,  rvec, tvec = cv2.solvePnP(markerArray, cornerArray, self.cameramatrix, self.distCoefs, self.rvec, self.tvec, flags=flag)
-        print(f"{Fore.LIGHTCYAN_EX}Entering calib...{rvec}")
+        print(f"{Fore.LIGHTCYAN_EX}Entering calib...{self.rvec}")
         rotm = np.zeros((3,3)) 
-        cv2.Rodrigues(rvec, rotm)
+        cv2.Rodrigues(self.rvec, rotm)
         rotm = np.transpose(rotm)
         rotq = r2q(rotm)
         print('RotQ: ',rotq, 'RotM: ',rotm )
         # q=[1, rvec[0][0], rvec[1][0], rvec[2][0]],
-        return [-tvec[0], -tvec[1], tvec[2]], rotq
+        return [-self.tvec[0], -self.tvec[1], self.tvec[2]], rotq
         
 
     def SendTransform2tf(self, p:list=[0,0,0],q:list=[1,0,0,0], parent_frame:str= "panda_2/realsense",child_frame:str="Human_Pose"):
