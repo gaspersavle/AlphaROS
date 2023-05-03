@@ -29,6 +29,7 @@ import geometry_msgs.msg
 from std_msgs.msg import Bool
 from std_srvs.srv import SetBool
 from sensor_msgs.msg import Image, CameraInfo
+from visualization_msgs.msg import MarkerArray, Marker
 from cv_bridge import CvBridge   
 import colorama
 from colorama import Fore, Style
@@ -519,6 +520,7 @@ class SingleImageAlphaPose():
         self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
+        self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
         
         
         rospy.spin()
@@ -591,11 +593,12 @@ class SingleImageAlphaPose():
             else:
                 print(f"{Fore.RED} No pose detected...")
                 
-            if self.enableCamPose == True or self.args.markers == True:
+            if self.enableCamPose == True:
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
             
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
+            self.markerPub()
 
     def depth_CB(self, input):
 
@@ -608,9 +611,7 @@ class SingleImageAlphaPose():
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
 
-            if self.camPose != None:
-                for key, item in self.markerDict.items():
-                    self.SendTransform2tf(p=item[0], parent_frame="/world", child_frame=("/marker_"+str(key)))
+            if self.camPose != None: 
                 self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
                 # q=self.camRot,
                         
@@ -767,7 +768,6 @@ class SingleImageAlphaPose():
        
         if (corners != None) and (len(corners) > 0):
             # loop over the detected ArUCo corners
-            i = 0
             marker = []
             ids = np.ndarray.flatten(ids)
             if len(corners) == 8:
@@ -807,37 +807,10 @@ class SingleImageAlphaPose():
                 cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
                 cv2.circle(image, topRight, 4, (255, 0, 0), -1)
                 cv2.putText(image, str(id),
-
-                #cv2.aruco.drawAxis(image, self.cameramatrix, self.distCoefs, self.rvec, tvec, 0.1)
-                    (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, (0, 255, 0), 2)
-                i+=1
-
-            """ for (id, corner) in zip(ids,rejected):
-                print(f"{Fore.MAGENTA}Corner: {corner} | Type: {type(corner)}")
-                corners = corner.reshape((4, 2))
-                print(f"{Fore.YELLOW}Corners: {corners} | Type: {type(corners)}")
-                
-                (topLeft, topRight, bottomRight, bottomLeft) = corners
-                # convert each of the (x, y)-coordinate pairs to integers
-                topRight = [int(topRight[0]), int(topRight[1])]
-                bottomRight = [int(bottomRight[0]), int(bottomRight[1])]
-                bottomLeft = [int(bottomLeft[0]), int(bottomLeft[1])]
-                topLeft = [int(topLeft[0]), int(topLeft[1])]
-                self.cornerDict[id] = [topRight, bottomRight, bottomLeft, topLeft]
-                #print(topLeft)
-                # draw the bounding box of the ArUCo detection
-                cv2.line(image, topLeft, topRight, (255, 0, 0), 2)
-                cv2.line(image, topRight, bottomRight, (255, 0, 0), 2)
-                cv2.line(image, bottomRight, bottomLeft, (255, 0, 0), 2)
-                cv2.line(image, bottomLeft, topLeft, (255, 0, 0), 2)
-                cX = int((topLeft[0] + bottomRight[0]) / 2.0)
-                cY = int((topLeft[1] + bottomRight[1]) / 2.0)
-                cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
-                cv2.putText(image, str(id),
-                    (topLeft[0], topLeft[1] - 15), cv2.FONT_HERSHEY_SIMPLEX,
-                    0.5, (0, 255, 0), 2)
-                i+=1 """
+                        (topLeft[0], topLeft[1] - 15),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.5, (0, 255, 0), 2
+                        )
 
             print(f"{Fore.CYAN}{self.cornerDict}")
             #print(self.cornerdict)
@@ -849,8 +822,42 @@ class SingleImageAlphaPose():
                 print(f"{Fore.MAGENTA}Not enough visible markers!")
                 pass """
             return image
-                
+    
+    def markerPub(self):
+        markerarray = MarkerArray()
+        
+        for key, item in self.markerDict.items():
+            topR = item[0]
+            botL = item[2]
+            cx = (botL[0]+topR[0])/2
+            cy = (botL[1]+topR[1])/2
 
+            marker = Marker()
+            marker.header.frame_id = 'world'
+            marker.header.stamp = rospy.Time.now()
+            marker.id = key
+            marker.type = 1
+            marker.action = 0
+            marker.pose.position.x = cx
+            marker.pose.position.y = cy
+            marker.pose.position.z = 0.825
+            marker.pose.orientation.x = 0.0
+            marker.pose.orientation.y = 0.0
+            marker.pose.orientation.z = 0.0
+            marker.pose.orientation.w = 1.0
+            marker.color.r = 1.0
+            marker.color.g = 0.0
+            marker.color.b = 1.0
+            marker.color.a = 1.0
+            marker.scale.x = 0.1
+            marker.scale.y = 0.1
+            marker.scale.z = 0.01
+            marker.frame_locked = False
+            #print(f"{Fore.GREEN}Marker: {key} {Fore.BLUE}|{Fore.RED} Location: {cx, cy, item[0][2]}")
+            markerarray.markers.append(marker) 
+            #print(f"{Fore.LIGHTWHITE_EX}Item: {item[3]}")
+        self.pub_MARKER.publish(markerarray)
+       
 
     def camInfo(self, camera_topic:str):
         """
@@ -897,86 +904,86 @@ class SingleImageAlphaPose():
 
         """
         per = 0.0235
-        obj_pts = np.array([[-0.2,0.3, 0.825], # marker 1
-                    [-0.2,0.2, 0.825],
-                    [-0.3,0.2, 0.825],
-                    [-0.3,0.3, 0.825],
+        obj_pts = np.array([[-0.2,0.3, 0.92], # marker 1
+                    [-0.2,0.2, 0.92],
+                    [-0.3,0.2, 0.92],
+                    [-0.3,0.3, 0.92],
 
-                    [0.3,0.3, 0.825], # marker 2
-                    [0.3,0.2, 0.825],
-                    [0.2,0.2, 0.825],
-                    [0.2,0.3,0.825],
+                    [0.3,0.3, 0.92], # marker 2
+                    [0.3,0.2, 0.92],
+                    [0.2,0.2, 0.92],
+                    [0.2,0.3,0.92],
                     
-                    [0.4,0.4,0.825], # marker 3
-                    [0.4,0.3,0.825],
-                    [0.3,0.3,0.825],
-                    [0.3,0.4,0.825],
+                    [0.4,0.4,0.92], # marker 3
+                    [0.4,0.3,0.92],
+                    [0.3,0.3,0.92],
+                    [0.3,0.4,0.92],
                     
-                    [0.9,0.4,0.825], # marker 4
-                    [0.9,0.3,0.825],
-                    [0.8,0.3,0.825],
-                    [0.8,0.4,0.825],
+                    [0.9,0.4,0.92], # marker 4
+                    [0.9,0.3,0.92],
+                    [0.8,0.3,0.92],
+                    [0.8,0.4,0.92],
 
-                    [-0.2,1,0.825], # marker 5
-                    [-0.2,0.9,0.825],
-                    [-0.3,0.9,0.825],
-                    [-0.3,1,0.825],
+                    [-0.2,1,0.92], # marker 5
+                    [-0.2,0.9,0.92],
+                    [-0.3,0.9,0.92],
+                    [-0.3,1,0.92],
 
-                    [0.3,1,0.825], # marker 6
-                    [0.3,0.9,0.825],
-                    [0.2,0.9,0.825],
-                    [0.2,1,0.825],
+                    [0.3,1,0.92], # marker 6
+                    [0.3,0.9,0.92],
+                    [0.2,0.9,0.92],
+                    [0.2,1,0.92],
 
-                    [0.4,1,0.825], # marker 7
-                    [0.4,0.9,0.825],
-                    [0.3,0.9,0.825],
-                    [0.3,1,0.825],
+                    [0.4,1,0.92], # marker 7
+                    [0.4,0.9,0.92],
+                    [0.3,0.9,0.92],
+                    [0.3,1,0.92],
 
-                    [0.9,1,0.825], # marker 8
-                    [0.9,0.9,0.825],
-                    [0.8,0.9,0.825],
-                    [0.8,1,0.825]
+                    [0.9,1,0.92], # marker 8
+                    [0.9,0.9,0.92],
+                    [0.8,0.9,0.92],
+                    [0.8,1,0.92]
                     ], dtype=np.float32)
         
-        self.markerDict= {1:[[-0.2+per,0.3, 0.825], # marker 1
-                        [-0.2+per,0.2-per, 0.825],
-                        [-0.3+per,0.2-per, 0.825],
-                        [-0.3+per,0.3-per, 0.825]],
+        self.markerDict= {1:[[-0.2+per,0.3, 0.92], # marker 1
+                        [-0.2+per,0.2-per, 0.92],
+                        [-0.3+per,0.2-per, 0.92],
+                        [-0.3+per,0.3-per, 0.92]],
 
-                    2: [[0.3-per,0.3-per, 0.825], # marker 2
-                        [0.3-per,0.2-per, 0.825],
-                        [0.2-per,0.2-per, 0.825],
-                        [0.2-per,0.3-per,0.825]],
+                    2: [[0.3-per,0.3-per, 0.92], # marker 2
+                        [0.3-per,0.2-per, 0.92],
+                        [0.2-per,0.2-per, 0.92],
+                        [0.2-per,0.3-per,0.92]],
 
-                    3: [[0.4+per,0.8-per,0.825], # marker 3
-                        [0.4+per,0.7-per,0.825],
-                        [0.3+per,0.7-per,0.825],
-                        [0.3+per,0.8-per,0.825]],
+                    3: [[0.4+per,0.8-per,0.92], # marker 3
+                        [0.4+per,0.7-per,0.92],
+                        [0.3+per,0.7-per,0.92],
+                        [0.3+per,0.8-per,0.92]],
 
-                    4: [[0.9,0.4,0.825], # marker 4
-                        [0.9,0.3,0.825],
-                        [0.8,0.3,0.825],
-                        [0.8,0.4,0.825]],
+                    4: [[0.9-per,0.4+per,0.92], # marker 4
+                        [0.9-per,0.3+per,0.92],
+                        [0.8-per,0.3+per,0.92],
+                        [0.8-per,0.4+per,0.92]],
 
-                    5: [[-0.2,1,0.825], # marker 5
-                        [-0.2,0.9,0.825],
-                        [-0.3,0.9,0.825],
-                        [-0.3,1,0.825]],
+                    5: [[-0.2+per,1+per,0.92], # marker 5
+                        [-0.2+per,0.9+per,0.92],
+                        [-0.3+per,0.9+per,0.92],
+                        [-0.3+per,1+per,0.92]],
 
-                    6: [[0.3,1,0.825], # marker 6
-                        [0.3,0.9,0.825],
-                        [0.2,0.9,0.825],
-                        [0.2,1,0.825]],
+                    6: [[0.3-per,1+per,0.92], # marker 6
+                        [0.3-per,0.9+per,0.92],
+                        [0.2-per,0.9+per,0.92],
+                        [0.2-per,1+per,0.92]],
 
-                    7: [[0.4,1,0.825], # marker 7
-                        [0.4,0.9,0.825],
-                        [0.3,0.9,0.825],
-                        [0.3,1,0.825]],
+                    7: [[0.4+per,1+per,0.92], # marker 7
+                        [0.4+per,0.9+per,0.92],
+                        [0.3+per,0.9+per,0.92],
+                        [0.3+per,1+per,0.92]],
 
-                    8: [[0.9,1,0.825], # marker 8
-                        [0.9,0.9,0.825],
-                        [0.8,0.9,0.825],
-                        [0.8,1,0.825]]}
+                    8: [[0.9-per,1+per,0.92], # marker 8
+                        [0.9-per,0.9+per,0.92],
+                        [0.8-per,0.9+per,0.92],
+                        [0.8-per,1+per,0.92]]}
         #####################################
         ####### CHECK tfDicTEST.py ##########
         #####################################
