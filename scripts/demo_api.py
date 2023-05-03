@@ -16,10 +16,11 @@ import queue
 import yaml
 import sys
 #from helpers import path
-from transformations import * 
+from transformations import *
 
 import cv2
 import numpy as np
+
 
 ##################################################################
 import rospy
@@ -340,6 +341,14 @@ class SingleImageAlphaPose():
         self.rvec = np.zeros((3,1))
         self.tvec = np.zeros((3,1)) 
         
+        self.movement_L_X = []
+        self.movement_L_Y = []
+        self.movement_L_Z = []
+
+        self.movement_R_X = []
+        self.movement_R_Y = []
+        self.movement_R_Z = []
+        
         #self.config = update_config(config_file='config.yaml')
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
@@ -601,7 +610,7 @@ class SingleImageAlphaPose():
             self.markerPub()
 
     def depth_CB(self, input):
-
+        
         if self.enablePose:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
             self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
@@ -627,17 +636,34 @@ class SingleImageAlphaPose():
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
                         #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
                     #print('Joint z: ', joint['z'])
-                    np.roll(joint['qx'],-1)
-                    np.take(joint['qx'], 0)
-                    np.put(joint['qx'], 2, joint['x'])
+                    print(f"{Fore.WHITE}------------------------------------------------")
+                    print(f"{Fore.CYAN}Sklep: {key}")
+                    
+                    #np.take(joint['qx'], 0)
+                    joint['qx'] = np.roll(joint['qx'], -1)
+                    np.put(joint['qx'], 9, joint['x'])
+                    print(f"{Fore.RED}Joint X: {joint['qx']}")
+                            
+                    
+                    print(f"{Fore.RED}X: {joint['x']}")
 
-                    np.roll(joint['qy'],-1)
-                    np.take(joint['qy'], 0)
-                    np.put(joint['qy'], 2, joint['y'])
+                    
+                    #np.take(joint['qy'], 0)
+                    joint['qy'] = np.roll(joint['qy'], -1)
+                    np.put(joint['qy'], 9, joint['y'])
+                    print(f"{Fore.RED}Joint Y: {joint['qy']}")
+                            
+                    
+                    print(f"{Fore.GREEN}X: {joint['y']}")
 
-                    np.roll(joint['qz'],-1)
-                    np.take(joint['qz'], 0)
-                    np.put(joint['qz'], 2, joint['z'])
+                    #np.take(joint['qz'], 0)
+                    joint['qz'] = np.roll(joint['qz'], -1)
+                    np.put(joint['qz'], 9, joint['z'])
+                    
+                    print(f"{Fore.RED}Joint Z: {joint['qz']}")
+                    
+                    print(f"{Fore.BLUE}X: {joint['z']}")
+                    print(f"{Fore.WHITE}------------------------------------------------")
                     #print(joint['y'])
                     #print(f"{Fore.LIGHTBLUE_EX}{key}\n  Qx: {joint['qx']}\n  Qy: {joint['qy']}\n  Qz: {joint['qz']}")
 
@@ -655,12 +681,13 @@ class SingleImageAlphaPose():
                 
                 for key, joint in self.body.items():
                     jointx = self.GetMoveAvg(joint['qx'])
-                    #print(jointx)
+                    
                     jointy = self.GetMoveAvg(joint['qy'])
-                    #print(jointy)
+                    
                     jointz = self.GetMoveAvg(joint['qz'])
-                    #print(jointz)
+                   
 
+                    #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
                     jointxyz = self.uv_to_XY(jointx, jointy, jointz)
 
                     
@@ -671,8 +698,29 @@ class SingleImageAlphaPose():
                             transToWorld = self.GetCameraTrans('world',joint['cf']+'/rs')
                             transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
                             self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
-                        else:
-                            #print(f"{Fore.RED}Append to: {key}\n{joint}")
+                        elif key == 'L_wrist':
+                            print(f"{Fore.LIGHTCYAN_EX}Joint X: {joint['x']}")
+                            print(f"{Fore.LIGHTCYAN_EX}Joint Y: {joint['y']}")
+                            print(f"{Fore.LIGHTCYAN_EX}Joint Z: {joint['z']}")
+
+                            
+
+                            print(f"{Fore.LIGHTYELLOW_EX}Joint X avg: {jointx}")
+                            print(f"{Fore.LIGHTYELLOW_EX}Joint Y avg: {jointy}")
+                            print(f"{Fore.LIGHTYELLOW_EX}Joint Z avg: {jointz}")
+
+                            #self.movement_L_X.append(jointx)                        
+                            #self.movement_L_Y.append(jointy)
+                            #self.movement_L_Z.append(jointz)
+
+                            
+                        elif key == 'R_wrist':
+                            #self.movement_R_X.append(jointx)
+                            #self.movement_R_Y.append(jointy)
+                            #self.movement_R_Z.append(jointz)
+                            
+                            
+                            """ #print(f"{Fore.RED}Append to: {key}\n{joint}")
                             #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
                             
                             
@@ -691,7 +739,7 @@ class SingleImageAlphaPose():
                                 transJoint = joint['transj']
                             else:
                                 transJoint = [0,0,0]
-                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
+                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf']) """
                             #print(key,'World Z: ', joint['worldz'])
                 if self.args.circles == True:
                     
@@ -705,7 +753,18 @@ class SingleImageAlphaPose():
             
                 
             self.pub_DEPTH.publish(self.out_DEPTH)
+        else:
+            if len(self.movement_L_X) != 0:
+                print(f"{Fore.RED}Lx: {self.movement_L_X}")
+                print(f"{Fore.GREEN}Ly: {self.movement_L_Y}")
+                print(f"{Fore.BLUE}Lz: {self.movement_L_Z}")
 
+                print(f"{Fore.LIGHTRED_EX}Rx: {self.movement_R_X}")
+                print(f"{Fore.LIGHTGREEN_EX}Ry: {self.movement_R_Y}")
+                print(f"{Fore.LIGHTBLUE_EX}Rz: {self.movement_R_Z}")
+
+
+            
     def arucoInit(self,dict:str):
         """
         This function initialises the ArUco dictionaries and prepares the one
@@ -811,7 +870,35 @@ class SingleImageAlphaPose():
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5, (0, 255, 0), 2
                         )
-
+                
+                """ for (id, corner) in zip(ids,rejected):
+                    print(f"{Fore.MAGENTA}Corner: {corner} | Type: {type(corner)}")
+                    corners = corner.reshape((4, 2))
+                    print(f"{Fore.YELLOW}Corners: {corners} | Type: {type(corners)}")
+                    
+                    (topLeft, topRight, bottomRight, bottomLeft) = corners
+                    # convert each of the (x, y)-coordinate pairs to integers
+                    topRight = [int(topRight[0]), int(topRight[1])]
+                    bottomRight = [int(bottomRight[0]), int(bottomRight[1])]
+                    bottomLeft = [int(bottomLeft[0]), int(bottomLeft[1])]
+                    topLeft = [int(topLeft[0]), int(topLeft[1])]
+                    self.cornerDict[id] = [topRight, bottomRight, bottomLeft, topLeft]
+                    #print(topLeft)
+                    # draw the bounding box of the ArUCo detection
+                    cv2.line(image, topLeft, topRight, (255, 0, 0), 2)
+                    cv2.line(image, topRight, bottomRight, (255, 0, 0), 2)
+                    cv2.line(image, bottomRight, bottomLeft, (255, 0, 0), 2)
+                    cv2.line(image, bottomLeft, topLeft, (255, 0, 0), 2)
+                    cX = int((topLeft[0] + bottomRight[0]) / 2.0)
+                    cY = int((topLeft[1] + bottomRight[1]) / 2.0)
+                    cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
+                    cv2.circle(image, topRight, 4, (255, 0, 0), -1)
+                    cv2.putText(image, str(id),
+                            (topLeft[0], topLeft[1] - 15),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5, (0, 255, 0), 2
+                            )
+ """
             print(f"{Fore.CYAN}{self.cornerDict}")
             #print(self.cornerdict)
 
@@ -1066,7 +1153,7 @@ class SingleImageAlphaPose():
 
     def GetMoveAvg(self, axis:np.ndarray):
         
-        return axis.mean()
+        return np.mean(axis)
 
 
     def getRot(self, joint:str) -> np.ndarray:
