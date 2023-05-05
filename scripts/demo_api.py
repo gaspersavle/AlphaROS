@@ -340,6 +340,10 @@ class SingleImageAlphaPose():
         self.arucoInit(args.dict)
         self.rvec = np.zeros((3,1))
         self.tvec = np.zeros((3,1)) 
+
+        self.mx = None
+        self.my = None
+        self.mz = None
         
         self.movement_L_X = []
         self.movement_L_Y = []
@@ -620,8 +624,12 @@ class SingleImageAlphaPose():
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
 
-            if self.camPose != None: 
-                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
+            if self.camPose != None:
+                if self.mx != None:
+                    corrected = [self.camPose[0]+self.mx, self.camPose[1]+self.my, self.camPose[2]+self.mz]
+                else:
+                    corrected = self.camPose
+                self.SendTransform2tf(p=corrected,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
                 # q=self.camRot,
                         
             if self.pose != None:
@@ -636,34 +644,33 @@ class SingleImageAlphaPose():
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
                         #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
                     #print('Joint z: ', joint['z'])
-                    print(f"{Fore.WHITE}------------------------------------------------")
-                    print(f"{Fore.CYAN}Sklep: {key}")
                     
-                    #np.take(joint['qx'], 0)
+                    
                     joint['qx'] = np.roll(joint['qx'], -1)
                     np.put(joint['qx'], 9, joint['x'])
-                    print(f"{Fore.RED}Joint X: {joint['qx']}")
+                    
                             
-                    
-                    print(f"{Fore.RED}X: {joint['x']}")
-
-                    
-                    #np.take(joint['qy'], 0)
                     joint['qy'] = np.roll(joint['qy'], -1)
                     np.put(joint['qy'], 9, joint['y'])
-                    print(f"{Fore.RED}Joint Y: {joint['qy']}")
-                            
                     
-                    print(f"{Fore.GREEN}X: {joint['y']}")
-
-                    #np.take(joint['qz'], 0)
+                            
                     joint['qz'] = np.roll(joint['qz'], -1)
                     np.put(joint['qz'], 9, joint['z'])
                     
-                    print(f"{Fore.RED}Joint Z: {joint['qz']}")
-                    
+
+                    """ print(f"{Fore.WHITE}------------------------------------------------")
+                    print(f"{Fore.CYAN}Sklep: {key}")
+
+                    print(f"{Fore.RED}X: {joint['x']}")
+                    #print(f"{Fore.RED}Joint X: {joint['qx']}")
+
+                    print(f"{Fore.GREEN}X: {joint['y']}")
+                    #print(f"{Fore.RED}Joint Y: {joint['qy']}")
+
                     print(f"{Fore.BLUE}X: {joint['z']}")
-                    print(f"{Fore.WHITE}------------------------------------------------")
+                    #print(f"{Fore.RED}Joint Z: {joint['qz']}")
+                    
+                    print(f"{Fore.WHITE}------------------------------------------------") """
                     #print(joint['y'])
                     #print(f"{Fore.LIGHTBLUE_EX}{key}\n  Qx: {joint['qx']}\n  Qy: {joint['qy']}\n  Qz: {joint['qz']}")
 
@@ -680,10 +687,8 @@ class SingleImageAlphaPose():
                 #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
                 
                 for key, joint in self.body.items():
-                    jointx = self.GetMoveAvg(joint['qx'])
-                    
+                    jointx = self.GetMoveAvg(joint['qx'])        
                     jointy = self.GetMoveAvg(joint['qy'])
-                    
                     jointz = self.GetMoveAvg(joint['qz'])
                    
 
@@ -697,37 +702,21 @@ class SingleImageAlphaPose():
                         if key == 'body':
                             transToWorld = self.GetCameraTrans('world',joint['cf']+'/rs')
                             transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
-                            self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
-                        elif key == 'L_wrist':
-                            print(f"{Fore.LIGHTCYAN_EX}Joint X: {joint['x']}")
-                            print(f"{Fore.LIGHTCYAN_EX}Joint Y: {joint['y']}")
-                            print(f"{Fore.LIGHTCYAN_EX}Joint Z: {joint['z']}")
-
+                            #print(f"{Fore.RED} Rot: {transToWorld.rotation}")
+                            #rotJoint = [transToWorld.rotation.w, transToWorld.rotation.x, transToWorld.rotation.y, transToWorld.rotation.z]
+                            rot = rot_z(phi=-90, unit='deg')
                             
-
-                            print(f"{Fore.LIGHTYELLOW_EX}Joint X avg: {jointx}")
-                            print(f"{Fore.LIGHTYELLOW_EX}Joint Y avg: {jointy}")
-                            print(f"{Fore.LIGHTYELLOW_EX}Joint Z avg: {jointz}")
-
-                            #self.movement_L_X.append(jointx)                        
-                            #self.movement_L_Y.append(jointy)
-                            #self.movement_L_Z.append(jointz)
-
-                            
-                        elif key == 'R_wrist':
-                            #self.movement_R_X.append(jointx)
-                            #self.movement_R_Y.append(jointy)
-                            #self.movement_R_Z.append(jointz)
-                            
-                            
-                            """ #print(f"{Fore.RED}Append to: {key}\n{joint}")
+                            rotq = r2q(rot)
+                            self.SendTransform2tf(p=transJoint, q=[rotq[0], -0.9414, rotq[2], rotq[3]] , parent_frame=joint['pf'], child_frame=joint['cf'])
+                        else: 
+                            #print(f"{Fore.RED}Append to: {key}\n{joint}")
                             #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
                             
                             
                             transToWorld = self.GetCameraTrans(joint['cf']+'/rs', 'world')
                             
                             worldPos = transToWorld.translation
-                            #print(key, worldPos)
+                            #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
                             
                             joint['worldx'] = -worldPos.x
                             joint['worldy'] = -worldPos.y
@@ -739,7 +728,8 @@ class SingleImageAlphaPose():
                                 transJoint = joint['transj']
                             else:
                                 transJoint = [0,0,0]
-                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf']) """
+                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
+                            
                             #print(key,'World Z: ', joint['worldz'])
                 if self.args.circles == True:
                     
@@ -753,6 +743,7 @@ class SingleImageAlphaPose():
             
                 
             self.pub_DEPTH.publish(self.out_DEPTH)
+            self.visMarker()
         else:
             if len(self.movement_L_X) != 0:
                 print(f"{Fore.RED}Lx: {self.movement_L_X}")
@@ -903,6 +894,7 @@ class SingleImageAlphaPose():
             #print(self.cornerdict)
 
             self.camPose, self.camRot = self.getCamPose()
+            
             #print(f"{Fore.GREEN}ROTmat: {self.camRot}")
             self.enableCamPose = False
             """ else:
@@ -910,6 +902,42 @@ class SingleImageAlphaPose():
                 pass """
             return image
     
+    
+    def visMarker(self):
+        self.errorx = []
+        self.errory = []
+        self.errorz = []
+        for key, coords in self.cornerDict.items():
+            #print(f"{Fore.LIGHTMAGENTA_EX} Markerdict {key}: {Fore.GREEN}{coords}")
+            if self.cornerDict[key] != None:
+                topRc = coords[0]
+                botLc = coords[2]
+                #print(f"{Fore.LIGHTBLUE_EX} Top R: {topR}")
+                #print(f"{Fore.LIGHTBLUE_EX} Top R: {botL}")
+                cx = (botLc[0]+topRc[0])/2
+                cy = (botLc[1]+topRc[1])/2
+                cz = self.img_blur_DEPTH[int(cy), int(cx)]/1000
+                visMarkerloc = self.uv_to_XY(cx, cy, cz)
+                self.SendTransform2tf(p=visMarkerloc, parent_frame='rs_top', child_frame=('markerVis/'+str(key)))
+                topRw = self.markerDict[key][0]
+                botLw = self.markerDict[key][2]
+                wx = (botLw[0]+topRw[0])/2
+                wy = (botLw[1]+topRw[1])/2
+                wz = botLw[2]
+                worldloc = self.tfbuffer.lookup_transform('world','markerVis/'+str(key), time=rospy.Time())
+                wcx, wcy, wcz = worldloc.transform.translation.x, worldloc.transform.translation.y, worldloc.transform.translation.z
+
+                self.errorx.append(wx-wcx)
+                self.errory.append(wy-wcy)
+                self.errorz.append(wz-wcz)
+
+                #print(f"{Fore.LIGHTMAGENTA_EX}Napaka {Fore.GREEN}({key}): {Fore.LIGHTMAGENTA_EX}{dev}")
+        self.mx = np.mean(self.errorx)
+        self.my = np.mean(self.errory)
+        self.mz = np.mean(self.errorz)
+        
+                
+
     def markerPub(self):
         markerarray = MarkerArray()
         
@@ -943,6 +971,7 @@ class SingleImageAlphaPose():
             #print(f"{Fore.GREEN}Marker: {key} {Fore.BLUE}|{Fore.RED} Location: {cx, cy, item[0][2]}")
             markerarray.markers.append(marker) 
             #print(f"{Fore.LIGHTWHITE_EX}Item: {item[3]}")
+            self.SendTransform2tf(p=[marker.pose.position.x, marker.pose.position.y, marker.pose.position.z], parent_frame='world', child_frame=('marker/'+str(key)))
         self.pub_MARKER.publish(markerarray)
        
 
@@ -967,8 +996,12 @@ class SingleImageAlphaPose():
         self.cameramatrix = np.array([[self.camera_fx, 0.0, self.camera_cx],
                                     [0.0, self.camera_fy, self.camera_cy],
                                     [0.0, 0.0, 1.0]],dtype=np.float32)
+        
+        self.camMat = np.array([[625.11944,0.0, 322.41944],
+                            [0.0, 623.68514, 243.40506],
+                            [0.0,0.0,1.0]], dtype=np.float32)
 
-        self.distCoefs = np.array([0.0, 0.0, 0.0, 0.0, 0.0], dtype=np.float32)
+        self.distCoefs = np.array([0.140602, -0.332482, -0.000699, -0.004239, 0.000000], dtype=np.float32)
         
     
     def getCamPose(self):
@@ -991,46 +1024,6 @@ class SingleImageAlphaPose():
 
         """
         per = 0.0235
-        obj_pts = np.array([[-0.2,0.3, 0.92], # marker 1
-                    [-0.2,0.2, 0.92],
-                    [-0.3,0.2, 0.92],
-                    [-0.3,0.3, 0.92],
-
-                    [0.3,0.3, 0.92], # marker 2
-                    [0.3,0.2, 0.92],
-                    [0.2,0.2, 0.92],
-                    [0.2,0.3,0.92],
-                    
-                    [0.4,0.4,0.92], # marker 3
-                    [0.4,0.3,0.92],
-                    [0.3,0.3,0.92],
-                    [0.3,0.4,0.92],
-                    
-                    [0.9,0.4,0.92], # marker 4
-                    [0.9,0.3,0.92],
-                    [0.8,0.3,0.92],
-                    [0.8,0.4,0.92],
-
-                    [-0.2,1,0.92], # marker 5
-                    [-0.2,0.9,0.92],
-                    [-0.3,0.9,0.92],
-                    [-0.3,1,0.92],
-
-                    [0.3,1,0.92], # marker 6
-                    [0.3,0.9,0.92],
-                    [0.2,0.9,0.92],
-                    [0.2,1,0.92],
-
-                    [0.4,1,0.92], # marker 7
-                    [0.4,0.9,0.92],
-                    [0.3,0.9,0.92],
-                    [0.3,1,0.92],
-
-                    [0.9,1,0.92], # marker 8
-                    [0.9,0.9,0.92],
-                    [0.8,0.9,0.92],
-                    [0.8,1,0.92]
-                    ], dtype=np.float32)
         
         self.markerDict= {1:[[-0.2+per,0.3, 0.92], # marker 1
                         [-0.2+per,0.2-per, 0.92],
@@ -1071,9 +1064,6 @@ class SingleImageAlphaPose():
                         [0.9-per,0.9+per,0.92],
                         [0.8-per,0.9+per,0.92],
                         [0.8-per,1+per,0.92]]}
-        #####################################
-        ####### CHECK tfDicTEST.py ##########
-        #####################################
         cornerList = []
         markerList = []
 
@@ -1082,26 +1072,24 @@ class SingleImageAlphaPose():
                 for subind, tup in enumerate(self.cornerDict[marker]):
                     cornerList.append(list(self.cornerDict[marker][subind]))
                     markerList.append(self.markerDict[marker][subind])
-        """ for key, item in markerDict.items():
-            self.SendTransform2tf(p=item[0], parent_frame='world', child_frame=('marker_'+str(key))) """
+
         markerArray = np.asfarray(markerList, dtype=np.float32)
         cornerArray = np.asfarray(cornerList, dtype=np.float32)
 
-        #print(self.corners)
         flag = cv2.SOLVEPNP_ITERATIVE 
         print(f"{Fore.GREEN}Marker array: {markerArray}| Length: {Fore.LIGHTGREEN_EX}{markerArray.shape} | Type: {type(markerArray[0][0])}")
         print(f"{Fore.RED}Corner array: {cornerArray}| Length: {Fore.LIGHTRED_EX}{cornerArray.shape} | Type: {type(cornerArray[0][0])}")
-        retval, self.rvec, self.tvec = cv2.solvePnP(markerArray, cornerArray, self.cameramatrix, self.distCoefs, flags=flag)
-        # retval,  rvec, tvec = cv2.solvePnP(markerArray, cornerArray, self.cameramatrix, self.distCoefs, self.rvec, self.tvec, flags=flag)
+        retval, self.rvec, self.tvec = cv2.solvePnP(markerArray, cornerArray, self.camMat, self.distCoefs, flags=flag)
         print(f"{Fore.LIGHTCYAN_EX}Entering calib...{self.rvec}")
         rotm = np.zeros((3,3)) 
         cv2.Rodrigues(self.rvec, rotm)
         rotm = np.transpose(rotm)
         rotq = r2q(rotm)
         print('RotQ: ',rotq, 'RotM: ',rotm )
-        # q=[1, rvec[0][0], rvec[1][0], rvec[2][0]],
+
+
         return [-self.tvec[0], -self.tvec[1], self.tvec[2]], rotq
-        
+            
 
     def SendTransform2tf(self, p:list=[0,0,0],q:list=[1,0,0,0], parent_frame:str= "panda_2/realsense",child_frame:str="Human_Pose"):
         """
@@ -1151,6 +1139,7 @@ class SingleImageAlphaPose():
         transform = trans.transform
         return transform
 
+
     def GetMoveAvg(self, axis:np.ndarray):
         
         return np.mean(axis)
@@ -1175,8 +1164,16 @@ class SingleImageAlphaPose():
             lowJoint = self.body[curJoint['lower_j']]
             #print(f"{Fore.MAGENTA}{joint} | Z: {curJoint['worldz']}")
             #print(f"{Fore.LIGHTMAGENTA_EX}{curJoint['lower_j']} | Z: {lowJoint['worldz']}")
+            
+            """ curPos = [curJoint['x'], curJoint['y'], curJoint['z']]
+            lowPos = [lowJoint['x'], lowJoint['y'], lowJoint['z']]
+
+            curPos = [self.GetMoveAvg(curJoint['qx']), self.GetMoveAvg(curJoint['qy']), self.GetMoveAvg(curJoint['qz'])]
+            lowPos = [self.GetMoveAvg(lowJoint['qx']), self.GetMoveAvg(lowJoint['qy']), self.GetMoveAvg(lowJoint['qz'])] """
+
             curPos = [curJoint['worldx'], curJoint['worldy'], curJoint['worldz']]
             lowPos = [lowJoint['worldx'], lowJoint['worldy'], lowJoint['worldz']]
+            
 
             if curJoint['rot_x']:
                 dx = curPos[0] - lowPos[0]
@@ -1228,8 +1225,8 @@ class SingleImageAlphaPose():
             worldPos(list) : Real world position (in respect to camera)
         """
         
-        x = (u - (self.camera_cx)) / self.camera_fx
-        y = (v - (self.camera_cy)) / self.camera_fy
+        x = (u - (322.41944)) / 625.11944
+        y = (v - (243.40506)) / 623.68514
 
         X = (z * x)
         Y = (z * y)
