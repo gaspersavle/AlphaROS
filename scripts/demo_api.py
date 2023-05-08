@@ -330,6 +330,7 @@ class SingleImageAlphaPose():
         self.enableCamPose = True
         self.camPose = None
         self.corners = None
+        self.body = None
         self.poseNode = '/realsense/alphapose/enable'
         self.camPoseNode = '/realsense_top/get_pose'
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
@@ -341,18 +342,7 @@ class SingleImageAlphaPose():
         self.rvec = np.zeros((3,1))
         self.tvec = np.zeros((3,1)) 
 
-        self.mx = None
-        self.my = None
-        self.mz = None
-        
-        self.movement_L_X = []
-        self.movement_L_Y = []
-        self.movement_L_Z = []
-
-        self.movement_R_X = []
-        self.movement_R_Y = []
-        self.movement_R_Z = []
-        
+ 
         #self.config = update_config(config_file='config.yaml')
 
         self.pose_model = builder.build_sppe(cfg.MODEL, preset_cfg=cfg.DATA_PRESET)
@@ -369,6 +359,286 @@ class SingleImageAlphaPose():
         ####################################################################################
         ## Begin: Body dict
         ####################################################################################
+        self.initBodyDict()
+        #init rospy
+        self.initRosPy()
+        
+        
+        rospy.spin()
+        ####################################################################################
+
+    def pose_CB(self, input):
+        if self.enablePose:
+            self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+            #self.img_POSE = cv2.resize(self.img_POSE, ())
+            self.pose = self.process("demo", self.img_POSE)
+            self.vis_POSE = self.vis(self.img_POSE, self.pose)
+
+            if self.pose != None:
+                self.keypoints = self.pose['result'][0]['keypoints']
+
+                self.secs = str(input.header.stamp)[:10]
+                self.nsecs = str(input.header.stamp)[10:]
+
+                #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+                jIgnore = ['waist', 'torso', 'body']
+                tagIgnore = ['roll', 'pitch', 'yaw']
+                i = 0
+                for key, joint in self.body.items():
+                    keySegs = key.split('_')
+                    
+                    #print(ending)
+                    if keySegs[0] not in jIgnore:
+                        if keySegs[-1] not in tagIgnore:
+                            #print(keySegs)
+                            joint['x'] = int(self.keypoints[16-i][0])
+                            joint['y'] = int(self.keypoints[16-i][1])
+                            #print(f"{Fore.RED}{key}\n{Fore.BLACK}",joint)
+                            i+=1
+                    
+                self.body['R_hip_yaw']['x'] = self.body['R_hip_pitch']['x'] = self.body['R_hip']['x'] 
+                self.body['R_hip_yaw']['y'] = self.body['R_hip_pitch']['y'] = self.body['R_hip']['y'] 
+
+                self.body['L_hip_yaw']['x'] = self.body['L_hip_pitch']['x'] = self.body['L_hip']['x'] 
+                self.body['L_hip_yaw']['y'] = self.body['L_hip_pitch']['y'] = self.body['L_hip']['y'] 
+
+                self.body['R_shoulder_yaw']['x'] = self.body['R_shoulder_pitch']['x'] = self.body['R_shoulder']['x'] 
+                self.body['R_shoulder_yaw']['y'] = self.body['R_shoulder_pitch']['y'] = self.body['R_shoulder']['y'] 
+                
+                self.body['L_shoulder_yaw']['x'] = self.body['L_shoulder_pitch']['x'] = self.body['L_shoulder']['x'] 
+                self.body['L_shoulder_yaw']['y'] = self.body['L_shoulder_pitch']['y'] = self.body['L_shoulder']['y'] 
+
+                self.body['head_yaw']['x'] = self.body['head_roll']['x'] = self.body['head_pitch']['x'] = self.body['head']['x']
+                self.body['head_yaw']['y'] = self.body['head_roll']['y'] = self.body['head_pitch']['y'] = self.body['head']['y']
+
+                self.body['body']['x'] = (self.body['L_hip']['x']+self.body['R_hip']['x'])/2
+                self.body['body']['y'] = (self.body['L_hip']['y']+self.body['R_hip']['y'])/2
+
+                self.body['waist']['x'] = self.body['body']['x']
+                self.body['waist']['y'] = self.body['body']['y']
+
+                self.body['torso']['x'] = (self.body['L_shoulder']['x']+self.body['R_shoulder']['x'])/2
+                self.body['torso']['y'] = (self.body['L_shoulder']['y']+self.body['R_shoulder']['y'])/2
+
+
+
+                            
+
+
+
+                if self.args.circles == True:
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                
+                #print(f"{Fore.GREEN}{self.vis_POSE}")
+            else:
+                print(f"{Fore.RED} No pose detected...")
+                
+            if self.enableCamPose == True:
+                self.vis_POSE = self.markerHandler(image=self.vis_POSE)
+            
+            self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
+            self.pub_POSE.publish(self.out_POSE)
+            self.markerPub()
+
+    def depth_CB(self, input):
+        
+        if self.enablePose:
+            self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
+            self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
+            #print(f"{Fore.GREEN}Depth: {self.img_blur_DEPTH[350, 240]}")
+            #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
+            #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
+            
+            #print(f"{Fore.YELLOW} {self.img_DEPTH}")
+
+            if self.camPose != None:
+                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
+                # q=self.camRot,
+                        
+            if self.pose != None:
+                for key, joint in self.body.items():
+                    #print(key)
+                    if joint['y'] >= 480:
+                        joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]/1000
+                        #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
+                    elif joint['x'] >= 640:
+                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), 639]/1000
+                    else:
+                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
+                        #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
+                    #print('Joint z: ', joint['z'])
+                    
+                    
+                    joint['qx'] = np.roll(joint['qx'], -1)
+                    np.put(joint['qx'], 9, joint['x'])
+                    
+                            
+                    joint['qy'] = np.roll(joint['qy'], -1)
+                    np.put(joint['qy'], 9, joint['y'])
+                    
+                            
+                    joint['qz'] = np.roll(joint['qz'], -1)
+                    np.put(joint['qz'], 9, joint['z'])
+                    
+
+                    """ print(f"{Fore.WHITE}------------------------------------------------")
+                    print(f"{Fore.CYAN}Sklep: {key}")
+
+                    print(f"{Fore.RED}X: {joint['x']}")
+                    #print(f"{Fore.RED}Joint X: {joint['qx']}")
+
+                    print(f"{Fore.GREEN}X: {joint['y']}")
+                    #print(f"{Fore.RED}Joint Y: {joint['qy']}")
+
+                    print(f"{Fore.BLUE}X: {joint['z']}")
+                    #print(f"{Fore.RED}Joint Z: {joint['qz']}")
+                    
+                    print(f"{Fore.WHITE}------------------------------------------------") """
+                    #print(joint['y'])
+                    #print(f"{Fore.LIGHTBLUE_EX}{key}\n  Qx: {joint['qx']}\n  Qy: {joint['qy']}\n  Qz: {joint['qz']}")
+
+                print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
+                print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
+
+                self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
+
+
+                self.rounddepth_L = str(self.body['L_wrist']['z'])[:4]
+                self.rounddepth_R = str(self.body['L_wrist']['z'])[:4]
+
+                print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
+                #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
+                
+                for key, joint in self.body.items():
+                    jointx = self.GetMoveAvg(joint['qx'])        
+                    jointy = self.GetMoveAvg(joint['qy'])
+                    jointz = self.GetMoveAvg(joint['qz'])
+                   
+
+                    #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
+                    jointxyz = self.uv_to_XY(jointx, jointy, jointz)
+
+                    
+
+                    if joint['cf'] != None:
+                        self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
+                        if key == 'body':
+                            transToWorld = self.GetCameraTrans('world',joint['cf']+'/rs')
+                            transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
+                            #print(f"{Fore.RED} Rot: {transToWorld.rotation}")
+                            #rotJoint = [transToWorld.rotation.w, transToWorld.rotation.x, transToWorld.rotation.y, transToWorld.rotation.z]
+                            rot = rot_z(phi=-90, unit='deg')
+                            
+                            rotq = r2q(rot)
+                            self.SendTransform2tf(p=transJoint, q=[rotq[0], -0.9414, rotq[2], rotq[3]] , parent_frame=joint['pf'], child_frame=joint['cf'])
+                        else: 
+                            #print(f"{Fore.RED}Append to: {key}\n{joint}")
+                            #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
+                            
+                            
+                            transToWorld = self.GetCameraTrans(joint['cf']+'/rs', 'world')
+                            
+                            worldPos = transToWorld.translation
+                            #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
+                            
+                            joint['worldx'] = -worldPos.x
+                            joint['worldy'] = -worldPos.y
+                            joint['worldz'] = -worldPos.z
+                            #print(key, joint['worldz'])
+
+                            jointRot = self.getRot(joint=key)
+                            if joint['transj'] != None:
+                                transJoint = joint['transj']
+                            else:
+                                transJoint = [0,0,0]
+                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
+                            
+                            #print(key,'World Z: ', joint['worldz'])
+                if self.args.circles == True:
+                    
+                    self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                    self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
+
+            else:
+                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
+
+            
+                
+            self.pub_DEPTH.publish(self.out_DEPTH)
+            self.visMarker()
+
+
+            
+    def arucoInit(self,dict:str):
+        """
+        This function initialises the ArUco dictionaries and prepares the one
+        that will be used program-wide
+
+        Args
+        ----
+            dict(str) : Specifies the dictionary we want to use
+        """
+        
+        ARUCO_DICT = {
+        "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
+        "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
+        "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
+        "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
+        "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
+        "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
+        "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
+        "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
+        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
+        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
+        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
+        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
+        "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
+        "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
+        "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
+        "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
+        "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
+        "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
+        "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
+        "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
+        "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
+        }
+
+        self.arucoDict = ARUCO_DICT[dict]
+
+    def initRosPy(self, color_topic:str, depth_topic:str):
+        """
+        This function initialises all of the publishers and subsribers
+        required by the program.
+
+        Args
+        ----
+            color_topic(str) : ROS topic publishing color images, used by AlphaPose
+
+            depth_topic(str) : ROS topic publishing depth images, used to determine 3D location of joints
+        """
+        rospy.init_node("vision", anonymous = True)
+
+        self.pub_TRANS_POSE = tf2_ros.TransformBroadcaster()
+        self.transmsg = geometry_msgs.msg.TransformStamped()
+        self.tfbuffer = tf2_ros.Buffer()
+        self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
+        self.camInfo('/realsense_top/color')
+        
+        self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
+        self.sub_POSE = rospy.Subscriber("/realsense_top/color/image_raw", Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
+        self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
+        self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
+
+    def initBodyDict(self):
+        """
+        This funbction initialises the body dictionary which stores the locations of all the joints in the human body
+        and the information required to publish them, calculate joint angles and smooth the motion
+        """
+
         self.body ={'R_ankle': {'x': None, 'y': None, 'z': None, 'pf': 'r_knee_default', 
                         'cf': 'r_ankle_default','rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_knee',
                         'transj': [0, 0, -0.44], 'qx': np.ndarray(10), 'qy': np.ndarray(10), 'qz': np.ndarray(10),
@@ -519,278 +789,6 @@ class SingleImageAlphaPose():
                         'cf': 'waist_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'torso', 'parent': 'body', 'neg': False, 
                         'transj': None, 'qx': np.ndarray(10), 'qy': np.ndarray(10), 'qz': np.ndarray(10),
                         'worldx': None, 'worldy': None, 'worldz': None}}
-        #init rospy
-        rospy.init_node("vision", anonymous = True)
-
-        self.pub_TRANS_POSE = tf2_ros.TransformBroadcaster()
-        self.transmsg = geometry_msgs.msg.TransformStamped()
-        self.tfbuffer = tf2_ros.Buffer()
-        self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
-        self.camInfo('/realsense_top/color')
-        
-        self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
-        self.sub_POSE = rospy.Subscriber("/realsense_top/color/image_raw", Image, self.pose_CB)
-        self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
-        self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
-        self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
-        self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
-        
-        
-        rospy.spin()
-        ####################################################################################
-
-    def pose_CB(self, input):
-        if self.enablePose:
-            self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-            #self.img_POSE = cv2.resize(self.img_POSE, ())
-            self.pose = self.process("demo", self.img_POSE)
-            self.vis_POSE = self.vis(self.img_POSE, self.pose)
-
-            if self.pose != None:
-                self.keypoints = self.pose['result'][0]['keypoints']
-
-                self.secs = str(input.header.stamp)[:10]
-                self.nsecs = str(input.header.stamp)[10:]
-
-                #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
-                jIgnore = ['waist', 'torso', 'body']
-                tagIgnore = ['roll', 'pitch', 'yaw']
-                i = 0
-                for key, joint in self.body.items():
-                    keySegs = key.split('_')
-                    
-                    #print(ending)
-                    if keySegs[0] not in jIgnore:
-                        if keySegs[-1] not in tagIgnore:
-                            #print(keySegs)
-                            joint['x'] = int(self.keypoints[16-i][0])
-                            joint['y'] = int(self.keypoints[16-i][1])
-                            #print(f"{Fore.RED}{key}\n{Fore.BLACK}",joint)
-                            i+=1
-                    
-                self.body['R_hip_yaw']['x'] = self.body['R_hip_pitch']['x'] = self.body['R_hip']['x'] 
-                self.body['R_hip_yaw']['y'] = self.body['R_hip_pitch']['y'] = self.body['R_hip']['y'] 
-
-                self.body['L_hip_yaw']['x'] = self.body['L_hip_pitch']['x'] = self.body['L_hip']['x'] 
-                self.body['L_hip_yaw']['y'] = self.body['L_hip_pitch']['y'] = self.body['L_hip']['y'] 
-
-                self.body['R_shoulder_yaw']['x'] = self.body['R_shoulder_pitch']['x'] = self.body['R_shoulder']['x'] 
-                self.body['R_shoulder_yaw']['y'] = self.body['R_shoulder_pitch']['y'] = self.body['R_shoulder']['y'] 
-                
-                self.body['L_shoulder_yaw']['x'] = self.body['L_shoulder_pitch']['x'] = self.body['L_shoulder']['x'] 
-                self.body['L_shoulder_yaw']['y'] = self.body['L_shoulder_pitch']['y'] = self.body['L_shoulder']['y'] 
-
-                self.body['head_yaw']['x'] = self.body['head_roll']['x'] = self.body['head_pitch']['x'] = self.body['head']['x']
-                self.body['head_yaw']['y'] = self.body['head_roll']['y'] = self.body['head_pitch']['y'] = self.body['head']['y']
-
-                self.body['body']['x'] = (self.body['L_hip']['x']+self.body['R_hip']['x'])/2
-                self.body['body']['y'] = (self.body['L_hip']['y']+self.body['R_hip']['y'])/2
-
-                self.body['waist']['x'] = self.body['body']['x']
-                self.body['waist']['y'] = self.body['body']['y']
-
-                self.body['torso']['x'] = (self.body['L_shoulder']['x']+self.body['R_shoulder']['x'])/2
-                self.body['torso']['y'] = (self.body['L_shoulder']['y']+self.body['R_shoulder']['y'])/2
-
-
-
-                            
-
-
-
-                if self.args.circles == True:
-                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                
-                #print(f"{Fore.GREEN}{self.vis_POSE}")
-            else:
-                print(f"{Fore.RED} No pose detected...")
-                
-            if self.enableCamPose == True:
-                self.vis_POSE = self.markerHandler(image=self.vis_POSE)
-            
-            self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
-            self.pub_POSE.publish(self.out_POSE)
-            self.markerPub()
-
-    def depth_CB(self, input):
-        
-        if self.enablePose:
-            self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
-            self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
-            #print(f"{Fore.GREEN}Depth: {self.img_blur_DEPTH[350, 240]}")
-            #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
-            #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
-            
-            #print(f"{Fore.YELLOW} {self.img_DEPTH}")
-
-            if self.camPose != None:
-                if self.mx != None:
-                    corrected = [self.camPose[0]+self.mx, self.camPose[1]+self.my, self.camPose[2]+self.mz]
-                else:
-                    corrected = self.camPose
-                self.SendTransform2tf(p=corrected,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
-                # q=self.camRot,
-                        
-            if self.pose != None:
-                for key, joint in self.body.items():
-                    #print(key)
-                    if joint['y'] >= 480:
-                        joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]/1000
-                        #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
-                    elif joint['x'] >= 640:
-                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), 639]/1000
-                    else:
-                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
-                        #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
-                    #print('Joint z: ', joint['z'])
-                    
-                    
-                    joint['qx'] = np.roll(joint['qx'], -1)
-                    np.put(joint['qx'], 9, joint['x'])
-                    
-                            
-                    joint['qy'] = np.roll(joint['qy'], -1)
-                    np.put(joint['qy'], 9, joint['y'])
-                    
-                            
-                    joint['qz'] = np.roll(joint['qz'], -1)
-                    np.put(joint['qz'], 9, joint['z'])
-                    
-
-                    """ print(f"{Fore.WHITE}------------------------------------------------")
-                    print(f"{Fore.CYAN}Sklep: {key}")
-
-                    print(f"{Fore.RED}X: {joint['x']}")
-                    #print(f"{Fore.RED}Joint X: {joint['qx']}")
-
-                    print(f"{Fore.GREEN}X: {joint['y']}")
-                    #print(f"{Fore.RED}Joint Y: {joint['qy']}")
-
-                    print(f"{Fore.BLUE}X: {joint['z']}")
-                    #print(f"{Fore.RED}Joint Z: {joint['qz']}")
-                    
-                    print(f"{Fore.WHITE}------------------------------------------------") """
-                    #print(joint['y'])
-                    #print(f"{Fore.LIGHTBLUE_EX}{key}\n  Qx: {joint['qx']}\n  Qy: {joint['qy']}\n  Qz: {joint['qz']}")
-
-                print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
-                print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
-
-                self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
-
-
-                self.rounddepth_L = str(self.body['L_wrist']['z'])[:4]
-                self.rounddepth_R = str(self.body['L_wrist']['z'])[:4]
-
-                print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
-                #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
-                
-                for key, joint in self.body.items():
-                    jointx = self.GetMoveAvg(joint['qx'])        
-                    jointy = self.GetMoveAvg(joint['qy'])
-                    jointz = self.GetMoveAvg(joint['qz'])
-                   
-
-                    #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
-                    jointxyz = self.uv_to_XY(jointx, jointy, jointz)
-
-                    
-
-                    if joint['cf'] != None:
-                        self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
-                        if key == 'body':
-                            transToWorld = self.GetCameraTrans('world',joint['cf']+'/rs')
-                            transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
-                            #print(f"{Fore.RED} Rot: {transToWorld.rotation}")
-                            #rotJoint = [transToWorld.rotation.w, transToWorld.rotation.x, transToWorld.rotation.y, transToWorld.rotation.z]
-                            rot = rot_z(phi=-90, unit='deg')
-                            
-                            rotq = r2q(rot)
-                            self.SendTransform2tf(p=transJoint, q=[rotq[0], -0.9414, rotq[2], rotq[3]] , parent_frame=joint['pf'], child_frame=joint['cf'])
-                        else: 
-                            #print(f"{Fore.RED}Append to: {key}\n{joint}")
-                            #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                            
-                            
-                            transToWorld = self.GetCameraTrans(joint['cf']+'/rs', 'world')
-                            
-                            worldPos = transToWorld.translation
-                            #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
-                            
-                            joint['worldx'] = -worldPos.x
-                            joint['worldy'] = -worldPos.y
-                            joint['worldz'] = -worldPos.z
-                            #print(key, joint['worldz'])
-
-                            jointRot = self.getRot(joint=key)
-                            if joint['transj'] != None:
-                                transJoint = joint['transj']
-                            else:
-                                transJoint = [0,0,0]
-                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
-                            
-                            #print(key,'World Z: ', joint['worldz'])
-                if self.args.circles == True:
-                    
-                    self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
-
-            else:
-                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
-
-            
-                
-            self.pub_DEPTH.publish(self.out_DEPTH)
-            self.visMarker()
-        else:
-            if len(self.movement_L_X) != 0:
-                print(f"{Fore.RED}Lx: {self.movement_L_X}")
-                print(f"{Fore.GREEN}Ly: {self.movement_L_Y}")
-                print(f"{Fore.BLUE}Lz: {self.movement_L_Z}")
-
-                print(f"{Fore.LIGHTRED_EX}Rx: {self.movement_R_X}")
-                print(f"{Fore.LIGHTGREEN_EX}Ry: {self.movement_R_Y}")
-                print(f"{Fore.LIGHTBLUE_EX}Rz: {self.movement_R_Z}")
-
-
-            
-    def arucoInit(self,dict:str):
-        """
-        This function initialises the ArUco dictionaries and prepares the one
-        that will be used program-wide
-
-        Args
-        ----
-            dict(str) : Specifies the dictionary we want to use
-        """
-        
-        ARUCO_DICT = {
-        "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
-        "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
-        "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
-        "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
-        "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
-        "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
-        "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
-        "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
-        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
-        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
-        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
-        "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
-        "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
-        "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
-        "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
-        "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
-        "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
-        "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
-        "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
-        "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
-        }
-
-        self.arucoDict = ARUCO_DICT[dict]
 
     def markerHandler(self, image:np.ndarray):
         """
@@ -904,9 +902,9 @@ class SingleImageAlphaPose():
     
     
     def visMarker(self):
-        self.errorx = []
-        self.errory = []
-        self.errorz = []
+        """
+        This function publishes msarker locations from the camera's perspective, it allows us to see if the camera pose is set properly
+        """
         for key, coords in self.cornerDict.items():
             #print(f"{Fore.LIGHTMAGENTA_EX} Markerdict {key}: {Fore.GREEN}{coords}")
             if self.cornerDict[key] != None:
@@ -919,26 +917,15 @@ class SingleImageAlphaPose():
                 cz = self.img_blur_DEPTH[int(cy), int(cx)]/1000
                 visMarkerloc = self.uv_to_XY(cx, cy, cz)
                 self.SendTransform2tf(p=visMarkerloc, parent_frame='rs_top', child_frame=('markerVis/'+str(key)))
-                topRw = self.markerDict[key][0]
-                botLw = self.markerDict[key][2]
-                wx = (botLw[0]+topRw[0])/2
-                wy = (botLw[1]+topRw[1])/2
-                wz = botLw[2]
-                worldloc = self.tfbuffer.lookup_transform('world','markerVis/'+str(key), time=rospy.Time())
-                wcx, wcy, wcz = worldloc.transform.translation.x, worldloc.transform.translation.y, worldloc.transform.translation.z
-
-                self.errorx.append(wx-wcx)
-                self.errory.append(wy-wcy)
-                self.errorz.append(wz-wcz)
-
-                #print(f"{Fore.LIGHTMAGENTA_EX}Napaka {Fore.GREEN}({key}): {Fore.LIGHTMAGENTA_EX}{dev}")
-        self.mx = np.mean(self.errorx)
-        self.my = np.mean(self.errory)
-        self.mz = np.mean(self.errorz)
+                
         
                 
 
     def markerPub(self):
+        """
+        This function is a static marker array publisher and a marker TF publisher
+        for us to visualise ArUco marker locations in RViz
+        """
         markerarray = MarkerArray()
         
         for key, item in self.markerDict.items():
@@ -1086,10 +1073,65 @@ class SingleImageAlphaPose():
         rotm = np.transpose(rotm)
         rotq = r2q(rotm)
         print('RotQ: ',rotq, 'RotM: ',rotm )
+        
+        #Publish temporary pose so compensation can happen
+        camPose = [-self.tvec[0], -self.tvec[1], self.tvec[2]]
+        self.SendTransform2tf(p=camPose,q=rotq, parent_frame="/world", child_frame="/rs_top")
+        correctecdPose = self.CamPoseCorrection(initial_pose=camPose)
 
 
-        return [-self.tvec[0], -self.tvec[1], self.tvec[2]], rotq
-            
+        return correctecdPose, rotq
+
+    def CamPoseCorrection(self, initial_pose:list)->list:
+        """
+        This function autocorrects the camera position based on the deviation from real world marker 
+        positions which are hardcoded. It shifts the camera position in all 3 axes by the deviation ammount
+        for each specific axis.
+
+        Args
+        ----
+            initial_pose(list) : Coordinates of the camera, calculated using the solve pnp function
+
+        Returns
+        -------
+            list : Corrected camera pose array [x+devX, y+devY, z+devZ]
+        """
+        errorx = []
+        errory = []
+        errorz = []
+        for key, coords in self.cornerDict.items():
+
+            # First publish the uncompensated marker positions as the camera sees
+            topRc = coords[0]
+            botLc = coords[2]
+            cx = (botLc[0]+topRc[0])/2
+            cy = (botLc[1]+topRc[1])/2
+            cz = self.img_blur_DEPTH[int(cy), int(cx)]/1000
+            visMarkerloc = self.uv_to_XY(cx, cy, cz)
+            self.SendTransform2tf(p=visMarkerloc, parent_frame='rs_top', child_frame=('markerVis/'+str(key)))
+
+            # Calculate center of corresponding marker in real world coordinates
+            topRw = self.markerDict[key][0]
+            botLw = self.markerDict[key][2]
+            wx = (botLw[0]+topRw[0])/2
+            wy = (botLw[1]+topRw[1])/2
+            wz = botLw[2]
+
+            # Get real world coordinates from cameras view of the markers
+            worldloc = self.tfbuffer.lookup_transform('world','markerVis/'+str(key), time=rospy.Time())
+            wcx, wcy, wcz = worldloc.transform.translation.x, worldloc.transform.translation.y, worldloc.transform.translation.z
+
+            errorx.append(wx-wcx)
+            errory.append(wy-wcy)
+            errorz.append(wz-wcz)
+        # Get mean error for each axis
+        mx = np.mean(errorx)
+        my = np.mean(errory)
+        mz = np.mean(errorz)
+        
+        return [initial_pose[0]+mx, initial_pose[1]+my, initial_pose[2]+mz]
+        
+
 
     def SendTransform2tf(self, p:list=[0,0,0],q:list=[1,0,0,0], parent_frame:str= "panda_2/realsense",child_frame:str="Human_Pose"):
         """
