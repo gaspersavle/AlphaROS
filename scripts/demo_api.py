@@ -361,7 +361,7 @@ class SingleImageAlphaPose():
         ####################################################################################
         self.initBodyDict()
         #init rospy
-        self.initRosPy()
+        self.initRosPy(color_topic="/realsense_top/color/image_raw", depth_topic="/realsense_top/aligned_depth_to_color/image_raw")
         
         
         rospy.spin()
@@ -531,7 +531,7 @@ class SingleImageAlphaPose():
                             rot = rot_z(phi=-90, unit='deg')
                             
                             rotq = r2q(rot)
-                            self.SendTransform2tf(p=transJoint, q=[rotq[0], -0.9414, rotq[2], rotq[3]] , parent_frame=joint['pf'], child_frame=joint['cf'])
+                            self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
                         else: 
                             #print(f"{Fore.RED}Append to: {key}\n{joint}")
                             #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
@@ -627,8 +627,8 @@ class SingleImageAlphaPose():
         self.camInfo('/realsense_top/color')
         
         self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
-        self.sub_POSE = rospy.Subscriber("/realsense_top/color/image_raw", Image, self.pose_CB)
-        self.sub_DEPTH = rospy.Subscriber("/realsense_top/aligned_depth_to_color/image_raw", Image, self.depth_CB)
+        self.sub_POSE = rospy.Subscriber(color_topic, Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber(depth_topic, Image, self.depth_CB)
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
@@ -1012,45 +1012,45 @@ class SingleImageAlphaPose():
         """
         per = 0.0235
         
-        self.markerDict= {1:[[-0.2+per,0.3, 0.92], # marker 1
-                        [-0.2+per,0.2-per, 0.92],
-                        [-0.3+per,0.2-per, 0.92],
-                        [-0.3+per,0.3-per, 0.92]],
+        self.markerDict= {1:[[-0.2+per,0.3, 0.825], # marker 1
+                        [-0.2+per,0.2-per, 0.825],
+                        [-0.3+per,0.2-per, 0.825],
+                        [-0.3+per,0.3-per, 0.825]],
 
-                    2: [[0.3-per,0.3-per, 0.92], # marker 2
-                        [0.3-per,0.2-per, 0.92],
-                        [0.2-per,0.2-per, 0.92],
-                        [0.2-per,0.3-per,0.92]],
+                    2: [[0.3-per,0.3-per, 0.825], # marker 2
+                        [0.3-per,0.2-per, 0.825],
+                        [0.2-per,0.2-per, 0.825],
+                        [0.2-per,0.3-per, 0.825]],
 
-                    3: [[0.4+per,0.8-per,0.92], # marker 3
-                        [0.4+per,0.7-per,0.92],
-                        [0.3+per,0.7-per,0.92],
-                        [0.3+per,0.8-per,0.92]],
+                    3: [[0.4+per,0.85+per, 0.825], # marker 3
+                        [0.4+per,0.75+per, 0.825],
+                        [0.3+per,0.75+per, 0.825],
+                        [0.3+per,0.85+per, 0.825]],
 
-                    4: [[0.9-per,0.4+per,0.92], # marker 4
-                        [0.9-per,0.3+per,0.92],
-                        [0.8-per,0.3+per,0.92],
-                        [0.8-per,0.4+per,0.92]],
+                    4: [[0.9-per,0.4+per, 0.825], # marker 4
+                        [0.9-per,0.3+per, 0.825],
+                        [0.8-per,0.3+per, 0.825],
+                        [0.8-per,0.4+per, 0.825]],
 
-                    5: [[-0.2+per,1+per,0.92], # marker 5
-                        [-0.2+per,0.9+per,0.92],
-                        [-0.3+per,0.9+per,0.92],
-                        [-0.3+per,1+per,0.92]],
+                    5: [[-0.2+per,1+per, 0.825], # marker 5
+                        [-0.2+per,0.9+per, 0.825],
+                        [-0.3+per,0.9+per, 0.825],
+                        [-0.3+per,1+per, 0.825]],
 
-                    6: [[0.3-per,1+per,0.92], # marker 6
-                        [0.3-per,0.9+per,0.92],
-                        [0.2-per,0.9+per,0.92],
-                        [0.2-per,1+per,0.92]],
+                    6: [[0.3-per,1+per, 0.825], # marker 6
+                        [0.3-per,0.9+per, 0.825],
+                        [0.2-per,0.9+per, 0.825],
+                        [0.2-per,1+per, 0.825]],
 
-                    7: [[0.4+per,1+per,0.92], # marker 7
-                        [0.4+per,0.9+per,0.92],
-                        [0.3+per,0.9+per,0.92],
-                        [0.3+per,1+per,0.92]],
+                    7: [[0.4+per,1+per, 0.825], # marker 7
+                        [0.4+per,0.9+per, 0.825],
+                        [0.3+per,0.9+per, 0.825],
+                        [0.3+per,1+per, 0.825]],
 
-                    8: [[0.9-per,1+per,0.92], # marker 8
-                        [0.9-per,0.9+per,0.92],
-                        [0.8-per,0.9+per,0.92],
-                        [0.8-per,1+per,0.92]]}
+                    8: [[0.9-per,1+per, 0.825], # marker 8
+                        [0.9-per,0.9+per, 0.825],
+                        [0.8-per,0.9+per, 0.825],
+                        [0.8-per,1+per, 0.825]]}
         cornerList = []
         markerList = []
 
@@ -1099,35 +1099,38 @@ class SingleImageAlphaPose():
         errorx = []
         errory = []
         errorz = []
+        #print(f"{Fore.MAGENTA}Coords: {self.cornerDict}")
         for key, coords in self.cornerDict.items():
+            if coords != None:
+                print(f"{Fore.BLUE}Key: {key}| Coords: {self.cornerDict[key]}")
+                # First publish the uncompensated marker positions as the camera sees
+                topRc = coords[0]
+                botLc = coords[2]
+                cx = (botLc[0]+topRc[0])/2
+                cy = (botLc[1]+topRc[1])/2
+                cz = self.img_blur_DEPTH[int(cy), int(cx)]/1000
+                visMarkerloc = self.uv_to_XY(cx, cy, cz)
+                self.SendTransform2tf(p=visMarkerloc, parent_frame='rs_top', child_frame=('markerVis/'+str(key)))
 
-            # First publish the uncompensated marker positions as the camera sees
-            topRc = coords[0]
-            botLc = coords[2]
-            cx = (botLc[0]+topRc[0])/2
-            cy = (botLc[1]+topRc[1])/2
-            cz = self.img_blur_DEPTH[int(cy), int(cx)]/1000
-            visMarkerloc = self.uv_to_XY(cx, cy, cz)
-            self.SendTransform2tf(p=visMarkerloc, parent_frame='rs_top', child_frame=('markerVis/'+str(key)))
+                # Calculate center of corresponding marker in real world coordinates
+                topRw = self.markerDict[key][0]
+                botLw = self.markerDict[key][2]
+                wx = (botLw[0]+topRw[0])/2
+                wy = (botLw[1]+topRw[1])/2
+                wz = botLw[2]
 
-            # Calculate center of corresponding marker in real world coordinates
-            topRw = self.markerDict[key][0]
-            botLw = self.markerDict[key][2]
-            wx = (botLw[0]+topRw[0])/2
-            wy = (botLw[1]+topRw[1])/2
-            wz = botLw[2]
+                # Get real world coordinates from cameras view of the markers
+                worldloc = self.tfbuffer.lookup_transform('world','markerVis/'+str(key), time=rospy.Time())
+                wcx, wcy, wcz = worldloc.transform.translation.x, worldloc.transform.translation.y, worldloc.transform.translation.z
 
-            # Get real world coordinates from cameras view of the markers
-            worldloc = self.tfbuffer.lookup_transform('world','markerVis/'+str(key), time=rospy.Time())
-            wcx, wcy, wcz = worldloc.transform.translation.x, worldloc.transform.translation.y, worldloc.transform.translation.z
-
-            errorx.append(wx-wcx)
-            errory.append(wy-wcy)
-            errorz.append(wz-wcz)
+                errorx.append(wx-wcx)
+                errory.append(wy-wcy)
+                errorz.append(wz-wcz)
         # Get mean error for each axis
         mx = np.mean(errorx)
         my = np.mean(errory)
         mz = np.mean(errorz)
+        print(f"{Fore.RED}e X: {mx} \n{Fore.GREEN}e Y: {my} \n{Fore.BLUE}e Z: {mz}")
         
         return [initial_pose[0]+mx, initial_pose[1]+my, initial_pose[2]+mz]
         
