@@ -524,7 +524,7 @@ class SingleImageAlphaPose():
                     if joint['cf'] != None:
                         self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
                         if key == 'body':
-                            transToWorld = self.GetCameraTrans('world',joint['cf']+'/rs')
+                            transToWorld = self.GetTrans('world',joint['cf']+'/rs')
                             transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
                             #print(f"{Fore.RED} Rot: {transToWorld.rotation}")
                             #rotJoint = [transToWorld.rotation.w, transToWorld.rotation.x, transToWorld.rotation.y, transToWorld.rotation.z]
@@ -537,7 +537,7 @@ class SingleImageAlphaPose():
                             #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
                             
                             
-                            transToWorld = self.GetCameraTrans(joint['cf']+'/rs', 'world')
+                            transToWorld = self.GetTrans('world',joint['cf']+'/rs')
                             
                             worldPos = transToWorld.translation
                             #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
@@ -568,6 +568,7 @@ class SingleImageAlphaPose():
                 
             self.pub_DEPTH.publish(self.out_DEPTH)
             self.visMarker()
+            self.getProximity()
 
 
             
@@ -900,6 +901,60 @@ class SingleImageAlphaPose():
                 pass """
             return image
     
+    def getProximity(self):
+        pandaPose1 = {
+            0: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            1: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            2: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            3: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            4: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            5: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            6: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            7: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            8: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+        } 
+        pandaPose2 = {
+            0: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            1: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            2: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            3: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            4: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            5: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            6: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            7: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            8: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+        } 
+        for link, loc in pandaPose1.items():
+            #pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
+            pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
+            for joint, dist in pandaPose1[link]['PROX'].items():
+            #    pandaPose1[link]['PROX'] = math.sqrt((pandaPose1[link]['POS'].x-self.body[joint]['worldx'])**2+(pandaPose1[link]['POS'].y-self.body[joint]['worldy'])**2+(pandaPose1[link]['POS'].z-self.body[joint]['worldz'])**2)
+                print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
+                pandaPose2[link]['PROX'][joint] = math.sqrt((pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
+            print(f"{Fore.LIGHTCYAN_EX}Pos 1: {pandaPose1[link]['POS']}\nPos 2: {pandaPose2[link]['POS']}")
+            print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {pandaPose1[link]['PROX']}\Prox 2: {pandaPose2[link]['PROX']}")
+                
+
+
+               
     
     def visMarker(self):
         """
@@ -918,8 +973,7 @@ class SingleImageAlphaPose():
                 visMarkerloc = self.uv_to_XY(cx, cy, cz)
                 self.SendTransform2tf(p=visMarkerloc, parent_frame='rs_top', child_frame=('markerVis/'+str(key)))
                 
-        
-                
+ 
 
     def markerPub(self):
         """
@@ -1166,7 +1220,7 @@ class SingleImageAlphaPose():
 
         self.pub_TRANS_POSE.sendTransform(self.transmsg)
 
-    def GetCameraTrans(self, from_sys:str, to_sys:str):
+    def GetTrans(self, from_sys:str, to_sys:str):
         """
         This functon looks up the transform from any specified frame to any other specified frame
 
