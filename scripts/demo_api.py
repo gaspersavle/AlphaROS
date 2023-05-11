@@ -28,7 +28,7 @@ import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool
-from std_srvs.srv import SetBool
+from std_srvs.srv import SetBool 
 from sensor_msgs.msg import Image, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
 from cv_bridge import CvBridge   
@@ -326,6 +326,10 @@ class SingleImageAlphaPose():
         self.args = args
         self.cfg = cfg
         self.image = None
+        self.colorTopic = None
+        self.depthTopic = None
+        self.camSel = False
+        self.tfFrame = 'rs_top'
         self.enablePose = False
         self.enableCamPose = True
         self.camPose = None
@@ -333,12 +337,16 @@ class SingleImageAlphaPose():
         self.body = None
         self.poseNode = '/realsense/alphapose/enable'
         self.camPoseNode = '/realsense_top/get_pose'
+        self.camSelectPanda = '/realsense/alphapose/selectPanda'
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
         rospy.Service(self.camPoseNode, SetBool, self.enableCamPose_CB)
+        rospy.Service(self.camSelectPanda, SetBool, self.selectPandaCB)
 
         self.create_service_client(self.poseNode)
         self.create_service_client(self.camPoseNode)
+        self.create_service_client(self.camSelectPanda)
         self.arucoInit(args.dict)
+
         self.rvec = np.zeros((3,1))
         self.tvec = np.zeros((3,1)) 
 
@@ -360,15 +368,17 @@ class SingleImageAlphaPose():
         ## Begin: Body dict
         ####################################################################################
         self.initBodyDict()
+        self.initProxDict()
+        self.initMarkerDict()
         #init rospy
-        self.initRosPy(color_topic="/realsense_top/color/image_raw", depth_topic="/realsense_top/aligned_depth_to_color/image_raw")
-        
-        
+        #print(f"{Fore.RED}{self.colorTopic}{self.depthTopic}")
+        self.initRosPy()
+
         rospy.spin()
         ####################################################################################
 
     def pose_CB(self, input):
-        if self.enablePose:
+        if self.enablePose and self.camSel:
             self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
             #self.img_POSE = cv2.resize(self.img_POSE, ())
             self.pose = self.process("demo", self.img_POSE)
@@ -434,16 +444,17 @@ class SingleImageAlphaPose():
             else:
                 print(f"{Fore.RED} No pose detected...")
                 
-            if self.enableCamPose == True:
+            if self.enableCamPose == True and self.colorTopic == '/realsense_top/color/image_raw':
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
+            self.markerPub()
             
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
-            self.markerPub()
+            
 
     def depth_CB(self, input):
         
-        if self.enablePose:
+        if self.enablePose and self.camSel:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
             self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
             #print(f"{Fore.GREEN}Depth: {self.img_blur_DEPTH[350, 240]}")
@@ -452,8 +463,8 @@ class SingleImageAlphaPose():
             
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
 
-            if self.camPose != None:
-                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame="/rs_top")
+            if self.camPose != None and self.camSel == True:
+                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
                 # q=self.camRot,
                         
             if self.pose != None:
@@ -522,7 +533,7 @@ class SingleImageAlphaPose():
                     
 
                     if joint['cf'] != None:
-                        self.SendTransform2tf(p=jointxyz, parent_frame='rs_top', child_frame=(joint['cf']+'/rs'))
+                        self.SendTransform2tf(p=jointxyz, parent_frame=self.tfFrame, child_frame=(joint['cf']+'/rs'))
                         if key == 'body':
                             transToWorld = self.GetTrans('world',joint['cf']+'/rs')
                             transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
@@ -531,6 +542,7 @@ class SingleImageAlphaPose():
                             rot = rot_z(phi=-90, unit='deg')
                             
                             rotq = r2q(rot)
+                            
                             self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
                         else: 
                             #print(f"{Fore.RED}Append to: {key}\n{joint}")
@@ -538,7 +550,7 @@ class SingleImageAlphaPose():
                             
                             
                             transToWorld = self.GetTrans('world',joint['cf']+'/rs')
-                            
+                    
                             worldPos = transToWorld.translation
                             #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
                             
@@ -567,7 +579,8 @@ class SingleImageAlphaPose():
             
                 
             self.pub_DEPTH.publish(self.out_DEPTH)
-            self.visMarker()
+            if self.colorTopic == '/realsense_top/color/image_raw':
+                self.visMarker()
             self.getProximity()
 
 
@@ -608,7 +621,7 @@ class SingleImageAlphaPose():
 
         self.arucoDict = ARUCO_DICT[dict]
 
-    def initRosPy(self, color_topic:str, depth_topic:str):
+    def initRosPy(self):
         """
         This function initialises all of the publishers and subsribers
         required by the program.
@@ -628,11 +641,59 @@ class SingleImageAlphaPose():
         self.camInfo('/realsense_top/color')
         
         self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
-        self.sub_POSE = rospy.Subscriber(color_topic, Image, self.pose_CB)
-        self.sub_DEPTH = rospy.Subscriber(depth_topic, Image, self.depth_CB)
+        while True:
+            if self.colorTopic != None:
+                break
+        
+        self.sub_POSE = rospy.Subscriber(self.colorTopic, Image, self.pose_CB)
+        self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
+
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
+
+    def initMarkerDict(self):
+        per = 0.0235
+
+        self.markerDict= {1:[[-0.2+per,0.3, 0.825], # marker 1
+                        [-0.2+per,0.2-per, 0.825],
+                        [-0.3+per,0.2-per, 0.825],
+                        [-0.3+per,0.3-per, 0.825]],
+
+                    2: [[0.3-per,0.3-per, 0.825], # marker 2
+                        [0.3-per,0.2-per, 0.825],
+                        [0.2-per,0.2-per, 0.825],
+                        [0.2-per,0.3-per, 0.825]],
+
+                    3: [[0.4+per,0.85+per, 0.825], # marker 3
+                        [0.4+per,0.75+per, 0.825],
+                        [0.3+per,0.75+per, 0.825],
+                        [0.3+per,0.85+per, 0.825]],
+
+                    4: [[0.9-per,0.4+per, 0.825], # marker 4
+                        [0.9-per,0.3+per, 0.825],
+                        [0.8-per,0.3+per, 0.825],
+                        [0.8-per,0.4+per, 0.825]],
+
+                    5: [[-0.2+per,1+per, 0.825], # marker 5
+                        [-0.2+per,0.9+per, 0.825],
+                        [-0.3+per,0.9+per, 0.825],
+                        [-0.3+per,1+per, 0.825]],
+
+                    6: [[0.3-per,1+per, 0.825], # marker 6
+                        [0.3-per,0.9+per, 0.825],
+                        [0.2-per,0.9+per, 0.825],
+                        [0.2-per,1+per, 0.825]],
+
+                    7: [[0.4+per,1+per, 0.825], # marker 7
+                        [0.4+per,0.9+per, 0.825],
+                        [0.3+per,0.9+per, 0.825],
+                        [0.3+per,1+per, 0.825]],
+
+                    8: [[0.9-per,1+per, 0.825], # marker 8
+                        [0.9-per,0.9+per, 0.825],
+                        [0.8-per,0.9+per, 0.825],
+                        [0.8-per,1+per, 0.825]]}
 
     def initBodyDict(self):
         """
@@ -791,6 +852,49 @@ class SingleImageAlphaPose():
                         'transj': None, 'qx': np.ndarray(10), 'qy': np.ndarray(10), 'qz': np.ndarray(10),
                         'worldx': None, 'worldy': None, 'worldz': None}}
 
+    def initProxDict(self):
+        self.pandaPose1 = {
+            0: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            1: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            2: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            3: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            4: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            5: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            6: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            7: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            8: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+        } 
+        
+        self.pandaPose2 = {
+            0: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            1: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            2: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            3: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            4: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            5: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            6: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
+            7: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+            8: {'POS': None,
+                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
+        } 
+
     def markerHandler(self, image:np.ndarray):
         """
         This function detects ArUco markers from an image, draws them
@@ -902,55 +1006,16 @@ class SingleImageAlphaPose():
             return image
     
     def getProximity(self):
-        pandaPose1 = {
-            0: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            1: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            2: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            3: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            4: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            5: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            6: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            7: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            8: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-        } 
-        pandaPose2 = {
-            0: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            1: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            2: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            3: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            4: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            5: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            6: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            7: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            8: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-        } 
-        for link, loc in pandaPose1.items():
-            #pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
-            pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
-            for joint, dist in pandaPose1[link]['PROX'].items():
-            #    pandaPose1[link]['PROX'] = math.sqrt((pandaPose1[link]['POS'].x-self.body[joint]['worldx'])**2+(pandaPose1[link]['POS'].y-self.body[joint]['worldy'])**2+(pandaPose1[link]['POS'].z-self.body[joint]['worldz'])**2)
-                print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
-                pandaPose2[link]['PROX'][joint] = math.sqrt((pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
-            print(f"{Fore.LIGHTCYAN_EX}Pos 1: {pandaPose1[link]['POS']}\nPos 2: {pandaPose2[link]['POS']}")
-            print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {pandaPose1[link]['PROX']}\Prox 2: {pandaPose2[link]['PROX']}")
+        for link, loc in self.pandaPose1.items():
+            #self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
+            self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
+            for joint, dist in self.pandaPose1[link]['PROX'].items():
+                if self.body[joint]['worldx'] != None:
+                    #self.pandaPose1[link]['PROX'] = math.sqrt((self.pandaPose1[link]['POS'].x-self.body[joint]['worldx'])**2+(self.pandaPose1[link]['POS'].y-self.body[joint]['worldy'])**2+(self.pandaPose1[link]['POS'].z-self.body[joint]['worldz'])**2)
+                    #print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
+                    self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
+            #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}\nPos 2: {self.pandaPose2[link]['POS']}")
+            #print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {self.pandaPose1[link]['PROX']}\Prox 2: {self.pandaPose2[link]['PROX']}")
                 
 
 
@@ -1064,47 +1129,6 @@ class SingleImageAlphaPose():
                 [w, Rot_X, Rot_Y, Rot_Z]
 
         """
-        per = 0.0235
-        
-        self.markerDict= {1:[[-0.2+per,0.3, 0.825], # marker 1
-                        [-0.2+per,0.2-per, 0.825],
-                        [-0.3+per,0.2-per, 0.825],
-                        [-0.3+per,0.3-per, 0.825]],
-
-                    2: [[0.3-per,0.3-per, 0.825], # marker 2
-                        [0.3-per,0.2-per, 0.825],
-                        [0.2-per,0.2-per, 0.825],
-                        [0.2-per,0.3-per, 0.825]],
-
-                    3: [[0.4+per,0.85+per, 0.825], # marker 3
-                        [0.4+per,0.75+per, 0.825],
-                        [0.3+per,0.75+per, 0.825],
-                        [0.3+per,0.85+per, 0.825]],
-
-                    4: [[0.9-per,0.4+per, 0.825], # marker 4
-                        [0.9-per,0.3+per, 0.825],
-                        [0.8-per,0.3+per, 0.825],
-                        [0.8-per,0.4+per, 0.825]],
-
-                    5: [[-0.2+per,1+per, 0.825], # marker 5
-                        [-0.2+per,0.9+per, 0.825],
-                        [-0.3+per,0.9+per, 0.825],
-                        [-0.3+per,1+per, 0.825]],
-
-                    6: [[0.3-per,1+per, 0.825], # marker 6
-                        [0.3-per,0.9+per, 0.825],
-                        [0.2-per,0.9+per, 0.825],
-                        [0.2-per,1+per, 0.825]],
-
-                    7: [[0.4+per,1+per, 0.825], # marker 7
-                        [0.4+per,0.9+per, 0.825],
-                        [0.3+per,0.9+per, 0.825],
-                        [0.3+per,1+per, 0.825]],
-
-                    8: [[0.9-per,1+per, 0.825], # marker 8
-                        [0.9-per,0.9+per, 0.825],
-                        [0.8-per,0.9+per, 0.825],
-                        [0.8-per,1+per, 0.825]]}
         cornerList = []
         markerList = []
 
@@ -1357,6 +1381,29 @@ class SingleImageAlphaPose():
             self.enableCamPose = False
             msg = self.camPoseNode + " stopped."
         return True, msg
+
+    def selectPandaCB(self, req):
+        if self.colorTopic == None:
+            panda = req.data
+            if panda:
+                print("Camera: realsense (Panda 2) selected...")
+                self.colorTopic = '/realsense/color/image_raw'
+                self.depthTopic = '/realsense/aligned_depth_to_color/image_raw'
+                self.tfFrame = 'panda_2/realsense'
+                msg = self.camSelectPanda + " Camera location: Panda 2"
+            else:
+                print("Camera: realsense_top (DEFAULT) selected...")
+                self.colorTopic = '/realsense_top/color/image_raw'
+                self.depthTopic = '/realsense_top/aligned_depth_to_color/image_raw'
+                self.tfFrame = 'rs_top'
+                msg = self.camSelectPanda + " Camera location: Top"
+            self.camSel = True
+            self.initRosPy()
+            #self.sub_POSE = rospy.Subscriber(self.colorTopic, Image, self.pose_CB)
+            #self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
+            return True, msg
+        else:
+            pass
 
     def create_service_client(self, node):
         try:
