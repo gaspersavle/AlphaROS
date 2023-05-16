@@ -27,7 +27,8 @@ import rospy
 import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
-from std_msgs.msg import Bool
+from std_msgs.msg import Bool, String
+from rospy_message_converter import message_converter
 from std_srvs.srv import SetBool 
 from sensor_msgs.msg import Image, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
@@ -660,6 +661,8 @@ class SingleImageAlphaPose():
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
+        self.pub_PANDA_PROX_1 = rospy.Publisher('/alphapose/prox/panda_1', String, queue_size= 1)
+        self.pub_PANDA_PROX_2 = rospy.Publisher('/alphapose/prox/panda_2', String, queue_size= 1)
 
     def initMarkerDict(self):
         per = 0.0235
@@ -862,6 +865,7 @@ class SingleImageAlphaPose():
                         'worldx': None, 'worldy': None, 'worldz': None}}
 
     def initProxDict(self):
+        # indices have 'k' in front of them to avoid string slicing
         self.pandaPose1 = {
             0: {'POS': None,
                 'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
@@ -1016,15 +1020,20 @@ class SingleImageAlphaPose():
     
     def getProximity(self):
         for link, loc in self.pandaPose1.items():
-            #self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
-            self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
+            self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_lin'+link).translation
+            self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_lin'+link).translation
             for joint, dist in self.pandaPose1[link]['PROX'].items():
                 if self.body[joint]['worldx'] != None:
-                    #self.pandaPose1[link]['PROX'] = math.sqrt((self.pandaPose1[link]['POS'].x-self.body[joint]['worldx'])**2+(self.pandaPose1[link]['POS'].y-self.body[joint]['worldy'])**2+(self.pandaPose1[link]['POS'].z-self.body[joint]['worldz'])**2)
+                    self.pandaPose1[link]['PROX'][joint] = math.sqrt((self.pandaPose1[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose1[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose1[link]['POS'].z+self.body[joint]['worldz'])**2)
                     #print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
                     self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
             #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}\nPos 2: {self.pandaPose2[link]['POS']}")
             #print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {self.pandaPose1[link]['PROX']}\Prox 2: {self.pandaPose2[link]['PROX']}")
+        dictionary = { 'data': 'Howdy' }
+        P1ProxMsg = message_converter.convert_dictionary_to_ros_message(message_type='std_msgs/String',dictionary=self.pandaPose1)
+        #P2ProxMsg = message_converter.convert_dictionary_to_ros_message(String, self.pandaPose2)
+        self.pub_PANDA_PROX_1.publish(P1ProxMsg)
+        #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
                 
 
 
