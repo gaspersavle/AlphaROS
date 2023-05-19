@@ -28,7 +28,7 @@ import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool, String
-from rospy_message_converter import message_converter
+from proxmsg.msg import PandaProx
 from std_srvs.srv import SetBool 
 from sensor_msgs.msg import Image, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
@@ -661,8 +661,8 @@ class SingleImageAlphaPose():
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
-        self.pub_PANDA_PROX_1 = rospy.Publisher('/alphapose/prox/panda_1', String, queue_size= 1)
-        self.pub_PANDA_PROX_2 = rospy.Publisher('/alphapose/prox/panda_2', String, queue_size= 1)
+        self.pub_PANDA_PROX_1 = rospy.Publisher('/alphapose/prox/panda_1', PandaProx, queue_size= 1)
+        self.pub_PANDA_PROX_2 = rospy.Publisher('/alphapose/prox/panda_2', PandaProx, queue_size= 1)
 
     def initMarkerDict(self):
         per = 0.0235
@@ -1020,19 +1020,18 @@ class SingleImageAlphaPose():
     
     def getProximity(self):
         for link, loc in self.pandaPose1.items():
-            self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_lin'+link).translation
-            self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_lin'+link).translation
+            self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
+            self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
             for joint, dist in self.pandaPose1[link]['PROX'].items():
                 if self.body[joint]['worldx'] != None:
                     self.pandaPose1[link]['PROX'][joint] = math.sqrt((self.pandaPose1[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose1[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose1[link]['POS'].z+self.body[joint]['worldz'])**2)
                     #print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
                     self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
-            #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}\nPos 2: {self.pandaPose2[link]['POS']}")
+            #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}{type(self.pandaPose1[link]['PROX']['head'])}\nPos 2: {self.pandaPose2[link]['POS']}")
             #print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {self.pandaPose1[link]['PROX']}\Prox 2: {self.pandaPose2[link]['PROX']}")
-        dictionary = { 'data': 'Howdy' }
-        P1ProxMsg = message_converter.convert_dictionary_to_ros_message(message_type='std_msgs/String',dictionary=self.pandaPose1)
-        #P2ProxMsg = message_converter.convert_dictionary_to_ros_message(String, self.pandaPose2)
-        self.pub_PANDA_PROX_1.publish(P1ProxMsg)
+  
+        self.proxPub("Panda_1", self.pandaPose1)
+        self.proxPub("Panda_2", self.pandaPose2)
         #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
                 
 
@@ -1097,8 +1096,127 @@ class SingleImageAlphaPose():
             #print(f"{Fore.LIGHTWHITE_EX}Item: {item[3]}")
             self.SendTransform2tf(p=[marker.pose.position.x, marker.pose.position.y, marker.pose.position.z], parent_frame='world', child_frame=('marker/'+str(key)))
         self.pub_MARKER.publish(markerarray)
-       
 
+    def proxPub(self, panda_name:str, prox_dict:dict):
+
+        proxmsg = PandaProx()
+        proxmsg.panda_name.data = panda_name
+        
+        proxmsg.joint_0.position.x = prox_dict[5]['POS'].x
+        proxmsg.joint_0.position.y = prox_dict[5]['POS'].y
+        proxmsg.joint_0.position.z = prox_dict[5]['POS'].z
+        proxmsg.joint_0.proximity.head.dist = prox_dict[5]['PROX']['head']
+        proxmsg.joint_0.proximity.L_shoulder.dist = prox_dict[5]['PROX']['L_shoulder']
+        proxmsg.joint_0.proximity.R_shoulder.dist = prox_dict[5]['PROX']['R_shoulder']
+        proxmsg.joint_0.proximity.head.dist = prox_dict[5]['PROX']['head']
+        proxmsg.joint_0.proximity.L_elbow.dist = prox_dict[5]['PROX']['L_elbow']
+        proxmsg.joint_0.proximity.R_elbow.dist = prox_dict[5]['PROX']['R_elbow']
+        proxmsg.joint_0.proximity.L_wrist.dist = prox_dict[5]['PROX']['L_wrist']
+        proxmsg.joint_0.proximity.R_wrist.dist = prox_dict[5]['PROX']['R_wrist']
+
+        proxmsg.joint_1.position.x = prox_dict[1]['POS'].x
+        proxmsg.joint_1.position.y = prox_dict[1]['POS'].y
+        proxmsg.joint_1.position.z = prox_dict[1]['POS'].z
+        proxmsg.joint_1.proximity.head.dist = prox_dict[1]['PROX']['head']
+        proxmsg.joint_1.proximity.L_shoulder.dist = prox_dict[1]['PROX']['L_shoulder']
+        proxmsg.joint_1.proximity.R_shoulder.dist = prox_dict[1]['PROX']['R_shoulder']
+        proxmsg.joint_1.proximity.head.dist = prox_dict[1]['PROX']['head']
+        proxmsg.joint_1.proximity.L_elbow.dist = prox_dict[1]['PROX']['L_elbow']
+        proxmsg.joint_1.proximity.R_elbow.dist = prox_dict[1]['PROX']['R_elbow']
+        proxmsg.joint_1.proximity.L_wrist.dist = prox_dict[1]['PROX']['L_wrist']
+        proxmsg.joint_1.proximity.R_wrist.dist = prox_dict[1]['PROX']['R_wrist']
+
+        proxmsg.joint_2.position.x = prox_dict[2]['POS'].x
+        proxmsg.joint_2.position.y = prox_dict[2]['POS'].y
+        proxmsg.joint_2.position.z = prox_dict[2]['POS'].z
+        proxmsg.joint_2.proximity.head.dist = prox_dict[2]['PROX']['head']
+        proxmsg.joint_2.proximity.L_shoulder.dist = prox_dict[2]['PROX']['L_shoulder']
+        proxmsg.joint_2.proximity.R_shoulder.dist = prox_dict[2]['PROX']['R_shoulder']
+        proxmsg.joint_2.proximity.head.dist = prox_dict[2]['PROX']['head']
+        proxmsg.joint_2.proximity.L_elbow.dist = prox_dict[2]['PROX']['L_elbow']
+        proxmsg.joint_2.proximity.R_elbow.dist = prox_dict[2]['PROX']['R_elbow']
+        proxmsg.joint_2.proximity.L_wrist.dist = prox_dict[2]['PROX']['L_wrist']
+        proxmsg.joint_2.proximity.R_wrist.dist = prox_dict[2]['PROX']['R_wrist']
+
+        proxmsg.joint_3.position.x = prox_dict[3]['POS'].x
+        proxmsg.joint_3.position.y = prox_dict[3]['POS'].y
+        proxmsg.joint_3.position.z = prox_dict[3]['POS'].z
+        proxmsg.joint_3.proximity.head.dist = prox_dict[3]['PROX']['head']
+        proxmsg.joint_3.proximity.L_shoulder.dist = prox_dict[3]['PROX']['L_shoulder']
+        proxmsg.joint_3.proximity.R_shoulder.dist = prox_dict[3]['PROX']['R_shoulder']
+        proxmsg.joint_3.proximity.head.dist = prox_dict[3]['PROX']['head']
+        proxmsg.joint_3.proximity.L_elbow.dist = prox_dict[3]['PROX']['L_elbow']
+        proxmsg.joint_3.proximity.R_elbow.dist = prox_dict[3]['PROX']['R_elbow']
+        proxmsg.joint_3.proximity.L_wrist.dist = prox_dict[3]['PROX']['L_wrist']
+        proxmsg.joint_3.proximity.R_wrist.dist = prox_dict[3]['PROX']['R_wrist']
+
+        proxmsg.joint_4.position.x = prox_dict[4]['POS'].x
+        proxmsg.joint_4.position.y = prox_dict[4]['POS'].y
+        proxmsg.joint_4.position.z = prox_dict[4]['POS'].z
+        proxmsg.joint_4.proximity.head.dist = prox_dict[4]['PROX']['head']
+        proxmsg.joint_4.proximity.L_shoulder.dist = prox_dict[4]['PROX']['L_shoulder']
+        proxmsg.joint_4.proximity.R_shoulder.dist = prox_dict[4]['PROX']['R_shoulder']
+        proxmsg.joint_4.proximity.head.dist = prox_dict[4]['PROX']['head']
+        proxmsg.joint_4.proximity.L_elbow.dist = prox_dict[4]['PROX']['L_elbow']
+        proxmsg.joint_4.proximity.R_elbow.dist = prox_dict[4]['PROX']['R_elbow']
+        proxmsg.joint_4.proximity.L_wrist.dist = prox_dict[4]['PROX']['L_wrist']
+        proxmsg.joint_4.proximity.R_wrist.dist = prox_dict[4]['PROX']['R_wrist']
+
+        proxmsg.joint_5.position.x = prox_dict[5]['POS'].x
+        proxmsg.joint_5.position.y = prox_dict[5]['POS'].y
+        proxmsg.joint_5.position.z = prox_dict[5]['POS'].z
+        proxmsg.joint_5.proximity.head.dist = prox_dict[5]['PROX']['head']
+        proxmsg.joint_5.proximity.L_shoulder.dist = prox_dict[5]['PROX']['L_shoulder']
+        proxmsg.joint_5.proximity.R_shoulder.dist = prox_dict[5]['PROX']['R_shoulder']
+        proxmsg.joint_5.proximity.head.dist = prox_dict[5]['PROX']['head']
+        proxmsg.joint_5.proximity.L_elbow.dist = prox_dict[5]['PROX']['L_elbow']
+        proxmsg.joint_5.proximity.R_elbow.dist = prox_dict[5]['PROX']['R_elbow']
+        proxmsg.joint_5.proximity.L_wrist.dist = prox_dict[5]['PROX']['L_wrist']
+        proxmsg.joint_5.proximity.R_wrist.dist = prox_dict[5]['PROX']['R_wrist']
+
+        proxmsg.joint_6.position.x = prox_dict[6]['POS'].x
+        proxmsg.joint_6.position.y = prox_dict[6]['POS'].y
+        proxmsg.joint_6.position.z = prox_dict[6]['POS'].z
+        proxmsg.joint_6.proximity.head.dist = prox_dict[6]['PROX']['head']
+        proxmsg.joint_6.proximity.L_shoulder.dist = prox_dict[6]['PROX']['L_shoulder']
+        proxmsg.joint_6.proximity.R_shoulder.dist = prox_dict[6]['PROX']['R_shoulder']
+        proxmsg.joint_6.proximity.head.dist = prox_dict[6]['PROX']['head']
+        proxmsg.joint_6.proximity.L_elbow.dist = prox_dict[6]['PROX']['L_elbow']
+        proxmsg.joint_6.proximity.R_elbow.dist = prox_dict[6]['PROX']['R_elbow']
+        proxmsg.joint_6.proximity.L_wrist.dist = prox_dict[6]['PROX']['L_wrist']
+        proxmsg.joint_6.proximity.R_wrist.dist = prox_dict[6]['PROX']['R_wrist']
+
+        proxmsg.joint_7.position.x = prox_dict[7]['POS'].x
+        proxmsg.joint_7.position.y = prox_dict[7]['POS'].y
+        proxmsg.joint_7.position.z = prox_dict[7]['POS'].z
+        proxmsg.joint_7.proximity.head.dist = prox_dict[7]['PROX']['head']
+        proxmsg.joint_7.proximity.L_shoulder.dist = prox_dict[7]['PROX']['L_shoulder']
+        proxmsg.joint_7.proximity.R_shoulder.dist = prox_dict[7]['PROX']['R_shoulder']
+        proxmsg.joint_7.proximity.head.dist = prox_dict[7]['PROX']['head']
+        proxmsg.joint_7.proximity.L_elbow.dist = prox_dict[7]['PROX']['L_elbow']
+        proxmsg.joint_7.proximity.R_elbow.dist = prox_dict[7]['PROX']['R_elbow']
+        proxmsg.joint_7.proximity.L_wrist.dist = prox_dict[7]['PROX']['L_wrist']
+        proxmsg.joint_7.proximity.R_wrist.dist = prox_dict[7]['PROX']['R_wrist']
+        
+        proxmsg.joint_8.position.x = prox_dict[8]['POS'].x
+        proxmsg.joint_8.position.y = prox_dict[8]['POS'].y
+        proxmsg.joint_8.position.z = prox_dict[8]['POS'].z
+        proxmsg.joint_8.proximity.head.dist = prox_dict[8]['PROX']['head']
+        proxmsg.joint_8.proximity.L_shoulder.dist = prox_dict[8]['PROX']['L_shoulder']
+        proxmsg.joint_8.proximity.R_shoulder.dist = prox_dict[8]['PROX']['R_shoulder']
+        proxmsg.joint_8.proximity.head.dist = prox_dict[8]['PROX']['head']
+        proxmsg.joint_8.proximity.L_elbow.dist = prox_dict[8]['PROX']['L_elbow']
+        proxmsg.joint_8.proximity.R_elbow.dist = prox_dict[8]['PROX']['R_elbow']
+        proxmsg.joint_8.proximity.L_wrist.dist = prox_dict[8]['PROX']['L_wrist']
+        proxmsg.joint_8.proximity.R_wrist.dist = prox_dict[8]['PROX']['R_wrist']
+
+        if panda_name == 'Panda_1':
+            self.pub_PANDA_PROX_1.publish(proxmsg)
+        elif panda_name == 'Panda_2':
+            self.pub_PANDA_PROX_2.publish(proxmsg)
+        else:
+            print(f"{Fore.RED}INVALID NAME")
+       
     def camInfo(self, camera_topic:str):
         """
         This function pulls camera parameters from the "/camera_info" topic
