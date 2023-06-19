@@ -31,6 +31,14 @@ import colorama
 from colorama import Fore, Style
 ##################################################################
 
+class SmokeDetector():
+    def __init__(self, name:str, type:str, size:float, features:tuple):
+        self.name = name
+        self.type = type
+        self.size = size
+        self.features = features
+
+
 class SmokeDetectorDetector():
     def __init__(self):
         self.IMAGE_HEIGHT = None
@@ -40,32 +48,34 @@ class SmokeDetectorDetector():
         self.camSel = False
         self.enableDetection = False
         self.enableNode = '/basler/smokedetection/enable'
+        self.enableCircleDetection = True
+        self.orb = cv2.ORB_create()
+        self.cropped = []
         rospy.Service(self.enableNode, SetBool, self.enableDetection_CB)
         self.initRosPy()
         rospy.spin()
 
     def colorCB(self, input):
-        if self.enableDetection:
-            self.img_basler = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
-            print('kosamona')
+        self.detectedDetectors = []
+        self.img_basler = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        print('kosamona')
 
-            gray = cv2.cvtColor(self.img_basler, cv2.COLOR_RGB2GRAY)
-            gray = cv2.medianBlur(gray, 5)
-            rows = gray.shape[0]
-            circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8,
-                                    param1=100, param2=30,
-                                    minRadius=100, maxRadius=150)
-            
-            print(f"{Fore.RED}IMG size: {circles}")
-            rot_basler = matrix(x = [0.,1.,0.,1.,0.,0.,0.,0.,-1.], shape=(3,3))
-            #rot_basler = np.eye(3)
-            #rot_basler = rot_z(math.pi/2)
-            rot_basler_q = r2q(rot_basler)
-            print(f"{Fore.MAGENTA} rotmat: {rot_basler} | Quaternion: {rot_basler_q}")
-            self.SendTransform2tf(p = [0.251, 0.272, 1.34], q = rot_basler_q, parent_frame= 'vision_table_zero', child_frame="basler")
-                
+        gray = cv2.cvtColor(self.img_basler, cv2.COLOR_RGB2GRAY)
+        gray = cv2.medianBlur(gray, 5)
+        rows = gray.shape[0]
+        circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8,
+                                param1=100, param2=30,
+                                minRadius=100, maxRadius=150)
+        
+        print(f"{Fore.RED}IMG size: {circles}")
+        rot_basler = matrix(x = [0.,1.,0.,1.,0.,0.,0.,0.,-1.], shape=(3,3))
+        #rot_basler = np.eye(3)
+        #rot_basler = rot_z(math.pi/2)
+        rot_basler_q = r2q(rot_basler)
+        print(f"{Fore.MAGENTA} rotmat: {rot_basler} | Quaternion: {rot_basler_q}")
+        self.SendTransform2tf(p = [0.291, 0.322, 1.34], q = rot_basler_q, parent_frame= 'vision_table_zero', child_frame="basler")
+        if self.enableCircleDetection:  
             if circles is not None:
-
                 circles = np.uint16(np.around(circles))
                 print(f"{Fore.LIGHTCYAN_EX}Circles: {circles}")
                 for index, i in enumerate(circles[0, :]):
@@ -77,13 +87,19 @@ class SmokeDetectorDetector():
                     print(f"{Fore.GREEN} meanbright: {meanbright}")
                     if meanbright >= 150:
                         #center
-                        cv2.circle(self.img_basler, center, 1, (0, 255, 0), 3)
-                        # circle outline
                         radius = i[2]
-                        print(f"{Fore.LIGHTMAGENTA_EX} circle index: {index}")
-                        cv2.circle(self.img_basler, center, radius, (0, 255, 0), 3)
+                        self.cropped.append(self.img_basler[center[1]-(radius+50):center[1]+(radius+50), center[0]-(radius+50):center[0]+(radius+50)])
+                        #cv2.circle(self.img_basler, center, 1, (0, 255, 0), 3)
+                        # circle outline
+                        
+                        print(f"{Fore.LIGHTMAGENTA_EX} circle radius: {radius}")
+                        #cv2.circle(self.img_basler, center, radius, (0, 255, 0), 3)
+                        #cv2.putText(self.img_basler, 'smokedet_'+str(index), (center), cv2.FONT_HERSHEY_COMPLEX, 1, (0, 0, 255), 3)
                         worldpos = self.uv_to_XY(center[0], center[1], 1.34)
                         self.SendTransform2tf(p = worldpos, parent_frame="basler", child_frame=("smokedet_"+str(index)))
+                        self.storeDetected(index, radius)
+                        
+                        #self.detectedDetectors.append()
                     else:
                         #center
                         cv2.circle(self.img_basler, center, 1, (255, 0, 0), 3)
@@ -91,10 +107,26 @@ class SmokeDetectorDetector():
                         radius = i[2]
                         print(radius)
                         cv2.circle(self.img_basler, center, radius, (255, 0, 0), 3)
-            
-            self.out = CvBridge().cv2_to_imgmsg(self.img_basler, encoding = 'rgb8')
-            self.pub_OUTPUT_IMG.publish(self.out)
+                
+                self.enableCircleDetection = False
+                
+
+        self.features()
+        #self.out = CvBridge().cv2_to_imgmsg(self.outimg, encoding = 'rgb8')
+        #self.out = CvBridge().cv2_to_imgmsg(self.img_basler, encoding = 'rgb8')
+        #self.out = CvBridge().cv2_to_imgmsg(self.cropped[2])
+        #self.pub_OUTPUT_IMG.publish(self.out)
+        #print(f"{Fore.CYAN}Detected detectors: {self.detectedDetectors}|||\n Name: {self.detectedDetectors[0].name}\n Size: {self.detectedDetectors[0].size}")
     
+    def storeDetected(self, index, radius):
+        self.detectedDetectors.append(
+            SmokeDetector(
+                name='smokedet_'+str(index),
+                size=radius,
+                type=None,
+                features=None
+            )
+        )
 
     def initRosPy(self):
         """
@@ -203,5 +235,28 @@ class SmokeDetectorDetector():
             msg = self.enableNode + " stopped."
         return True, msg
     
+    def features(self):
+        for ref in range(3):
+            refImg = cv2.imread('img/type_'+str(2)+'.png', cv2.IMREAD_GRAYSCALE)
+            print(f"{Fore.GREEN}ref: {ref}")
+            matchlist = []
+            for num in range(len(self.cropped)):
+                refKp, refDes = self.orb.detectAndCompute(refImg, None)
+                curKp, curDes = self.orb.detectAndCompute(self.cropped[num], None)
+                bf = cv2.BFMatcher(cv2.NORM_HAMMING, crossCheck = True)
+                matches = bf.match(refDes, curDes)
+                for m  in matches:
+                    print(f"{Fore.GREEN}Match + : {m.distance}")
+                    matchlist.append(m.distance)
+                print(f"{Fore.RED} cur: {num}")
+                print(f"{Fore.BLUE} Normed: {np.mean(matchlist)}")
+                matches = sorted(matches, key = lambda x:x.distance)
+                #self.outimg = self.cropped[num]
+                self.outimg = cv2.drawMatches(refImg, refKp, self.cropped[num], curKp, matches[:10], None, flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+                self.out = CvBridge().cv2_to_imgmsg(self.outimg, encoding = 'rgb8')
+                self.pub_OUTPUT_IMG.publish(self.out)
+            #
+        #self.outimg = cv2.drawKeypoints(self.img_basler, curKp, None, color=(0,255,0), flags=0)
+            refImg = None
 if __name__ == "__main__":
     SmokeDetectorDetector()
