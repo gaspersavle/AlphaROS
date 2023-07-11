@@ -64,10 +64,11 @@ class SmokeDetectorDetector():
         self.enableCircleDetection = False
             
         #self.features()
-        #self.out = CvBridge().cv2_to_imgmsg(self.img_basler, encoding = 'rgb8')
-        self.out = CvBridge().cv2_to_imgmsg(self.hsv, encoding = 'rgb8')
-        #self.out = CvBridge().cv2_to_imgmsg(self.cropped[2])
-        self.pub_DETECTION.publish(self.out)
+        #self.outOrientation = CvBridge().cv2_to_imgmsg(self.orientationImg, encoding = 'rgb8')
+        #self.out = CvBridge().cv2_to_imgmsg(self.hsv, encoding = 'rgb8')
+        
+        self.pub_DETECTION.publish(self.outDetection)
+        #self.pub_ORIENTATION.publish(self.outOrientation)
         #print(f"{Fore.CYAN}Detected detectors: {self.detectedDetectors}|||\n Name: {self.detectedDetectors[0].name}\n Size: {self.detectedDetectors[0].size}")
     
     def staticPub(self):
@@ -79,6 +80,7 @@ class SmokeDetectorDetector():
         if circles is not None:
             circles = np.uint16(np.around(circles))
             detectedDetector = None
+            self.detectionImg = np.copy(self.img_basler)
             for index, i in enumerate(circles[0, :]):
                 center = (i[0], i[1])
                 radius = i[2]
@@ -100,13 +102,13 @@ class SmokeDetectorDetector():
                     )
                     cv2.putText(self.hsv, text=(detectedDetector.name + ' = '+detectedDetector.type), org=center, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale= 2, color=(0, 255, 0), thickness= 2)
 
-                cv2.circle(self.img_basler, center, radius, (0, 255, 0), 3)
-                cv2.circle(self.img_basler, center, 1, (0, 255, 0), 3)
+                self.detectionImg=cv2.circle(self.detectionImg, center, radius, (0, 255, 0), 3)
+                self.detection_img=cv2.circle(self.detectionImg, center, 1, (0, 255, 0), 3)
                 worldpos = self.uv_to_XY(center[0], center[1], 1.3)
                 rot_smokedetector = np.transpose(matrix(x = [0.,1.,0.,1.,0.,0.,0.,0.,-1.], shape=(3,3)))
                 smokedet_q = r2q(rot_smokedetector)
                 self.SendTransform2tf(p = worldpos, q = smokedet_q, parent_frame="basler", child_frame=(detectedDetector.type))
-                return detectedDetector()
+                return detectedDetector
 
     def getCircles(self) -> np.ndarray:
         gray = cv2.cvtColor(self.img_basler, cv2.COLOR_RGB2GRAY)
@@ -234,14 +236,37 @@ class SmokeDetectorDetector():
             refImg = cv2.resize(src=cv2.imread('img/type_1.png', cv2.IMREAD_COLOR), dsize=(128,128))
         else:
             refImg = cv2.resize(src=cv2.imread('img/type_0.png', cv2.IMREAD_COLOR), dsize=(128,128))
+        costList = []
+        for angle in range(360):
+            rotation = cv2.getRotationMatrix2D((64,64), angle, 1.0)
+            rotated = cv2.warpAffine(refImg, rotation, (128,128))
 
-        margin = 64
-        curing =  
-        
+            margin = 128
+            smokedetCenter = detected.location
+            curImg = self.img_basler[smokedetCenter[1]-margin:smokedetCenter[1]+margin, smokedetCenter[0]-margin:smokedetCenter[0]+margin]
+            curImg = cv2.resize(curImg, dsize=(128,128)) 
+            sift = cv2.SIFT_create()
+            kpRef, desRef = sift.detectAndCompute(rotated,None)
+            kpCur, desCur = sift.detectAndCompute(curImg,None)
+            bf = cv2.BFMatcher()
+            matches = bf.knnMatch(desRef,desCur,k=2)
+            good = []
+            cost = []
+            for m,n in matches:
+                if m.distance < 0.75*n.distance:
+                    good.append([m])
+                    cost.append(m.distance)
 
-
-
-
-
+            avgDist = sum(cost)/len(cost)
+            print(f"{Fore.RED}Num of features: {len(matches)}")
+            print(f"{Fore.CYAN}Avg cost: {avgDist}")
+            self.orientationImg = cv2.drawMatchesKnn(rotated,kpRef,curImg,kpCur, good,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
+            #time.sleep(1)
+            self.outOrientation = CvBridge().cv2_to_imgmsg(self.orientationImg, encoding = 'rgb8')
+            self.pub_ORIENTATION.publish(self.outOrientation)
+            costList.append(avgDist)
+            time.sleep(0.1)
+        print(f"{Fore.LIGHTMAGENTA_EX} costlist: {costList}")
+        print(f"{Fore.LIGHTCYAN_EX} Angle: {np.argmin(costList)}")
 if __name__ == "__main__":
     SmokeDetectorDetector()
