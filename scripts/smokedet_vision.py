@@ -28,6 +28,7 @@ from sensor_msgs.msg import Image, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
 from cv_bridge import CvBridge   
 import colorama
+import heapq
 from colorama import Fore, Style
 ##################################################################
 
@@ -60,7 +61,8 @@ class SmokeDetectorDetector():
         circles = self.getCircles() 
         self.staticPub()
         detected = self.classifyAndPublishDetection(circles)
-        self.getOrientation(detected)
+        #self.getOrientation(detected)
+        self.getOrientationCorr(detected)
         self.enableCircleDetection = False
             
         #self.features()
@@ -163,6 +165,10 @@ class SmokeDetectorDetector():
         self.sub_INPUT_IMG = rospy.Subscriber(name = self.colorTopic, data_class = Image, callback = self.colorCB)
         self.pub_DETECTION = rospy.Publisher("/vision/smokedetector/detection", Image, queue_size=1)
         self.pub_ORIENTATION = rospy.Publisher("/vision/smokedetector/orientation", Image, queue_size=1)
+        self.pub_GRAPH = rospy.Publisher("/vision/smokedetector/graph", Image, queue_size=1)
+        self.pub_CORRELATION = rospy.Publisher("/vision/smokedetector/correlation", Image, queue_size=1)
+        self.pub_CUR = rospy.Publisher("/vision/smokedetector/current", Image, queue_size=1)
+        self.pub_REF = rospy.Publisher("/vision/smokedetector/refference", Image, queue_size=1)
 
     def SendTransform2tf(self, p:list=[0,0,0],q:list=[1,0,0,0], parent_frame:str= "panda_2/realsense",child_frame:str="Human_Pose"):
         """
@@ -231,12 +237,65 @@ class SmokeDetectorDetector():
             msg = self.enableNode + " stopped."
         return True, msg
     
+    def drawGraph(self, angle:int, cost:float, image:np.ndarray) -> np.ndarray:
+        cv2.line(image, pt1=(angle, 0), pt2=(angle, int(cost)), color=(255-angle, angle, 0), thickness=1)
+        cv2.rectangle(image, (100, 290), pt2=(360,360), color=(0,0,0), thickness=-1)
+        cv2.putText(image, text=("Cost: "+ str(cost)), org=(100, 320), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 255, 255))
+        graphImg= np.copy(image)
+        #outGraph = cv2.resize(graphImg, (128, 128))
+        return graphImg
+
+
+    def getOrientationCorr(self, detected:SmokeDetector):
+        graphImage = np.zeros((360,360, 3), dtype=np.uint8)
+        margin = 128
+        #margin = 255
+        smokedetCenter = detected.location
+        curImg =  self.img_basler[smokedetCenter[1]-margin:smokedetCenter[1]+margin, smokedetCenter[0]-margin:smokedetCenter[0]+margin]
+        curImg = cv2.cvtColor(cv2.resize(curImg, dsize=(512,512)), code=cv2.COLOR_RGB2GRAY) 
+        values = []
+        if detected.type == 'hekatron':
+            refImg = cv2.resize(src=cv2.imread('img/type_1.png', cv2.IMREAD_COLOR), dsize=(512,512))
+        else:
+            refImg = cv2.resize(src=cv2.imread('img/type_0.png', cv2.IMREAD_COLOR), dsize=(512,512))
+        
+        for angle in range(360):
+            rotation = cv2.getRotationMatrix2D((256,256), angle, 1.0)
+            #print(f"{Fore.GREEN}Center: {smokedetCenter}")
+            #refCropped = refImg[256-margin:256+margin, 256-margin:256+margin]
+            #refCropped = refImg[128:384, 128:384]
+            #print(f"{Fore.RED} ref: {refImg[0]} basler: {self.img_basler[0]}")
+            rotated = cv2.warpAffine(refImg, rotation, (512,512))
+            rotCrop = cv2.cvtColor(rotated[128:384, 128:384], code=cv2.COLOR_RGB2GRAY)
+            #neki, thresholded = cv2.threshold(rotCrop, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+            result = cv2.matchTemplate(curImg, rotCrop, method=cv2.TM_CCORR)
+            print(f"{Fore.LIGHTBLUE_EX}Result: {result}")
+            values.append(np.average(result)/10000000)
+            graphImg = self.drawGraph(angle=angle, cost=result[0][0]/10000000, image=graphImage)
+            self.outGraph = CvBridge().cv2_to_imgmsg(graphImg, encoding='rgb8')
+            self.pub_GRAPH.publish(self.outGraph)
+            self.outCorr = CvBridge().cv2_to_imgmsg(result, encoding='32FC1')
+            self.pub_CORRELATION.publish(self.outCorr)
+            self.outCur = CvBridge().cv2_to_imgmsg(curImg, encoding='8UC1')
+            self.pub_CUR.publish(self.outCur)
+            self.outRef = CvBridge().cv2_to_imgmsg(rotCrop, encoding='8UC1')
+            self.pub_REF.publish(self.outRef)
+            time.sleep(0.1)
+        #print(f"{Fore.LIGHTMAGENTA_EX} costlist: {values}")
+        print(f"{Fore.LIGHTCYAN_EX} Angle: {np.argmax(values)}")
+        print(f"{Fore.MAGENTA}Potetnial orientations: {np.argsort(values)[-30:]}")
+        print(f"{Fore.BLUE}Maximum differences: {np.argsort(values)[-30:]}")
+
+
+
     def getOrientation(self, detected:SmokeDetector):
+        graphImage = np.zeros((360,360, 3), dtype=np.uint8) 
         if detected.type == 'hekatron':
             refImg = cv2.resize(src=cv2.imread('img/type_1.png', cv2.IMREAD_COLOR), dsize=(128,128))
         else:
             refImg = cv2.resize(src=cv2.imread('img/type_0.png', cv2.IMREAD_COLOR), dsize=(128,128))
         costList = []
+        diffList = []
         for angle in range(360):
             rotation = cv2.getRotationMatrix2D((64,64), angle, 1.0)
             rotated = cv2.warpAffine(refImg, rotation, (128,128))
@@ -256,8 +315,11 @@ class SmokeDetectorDetector():
                 if m.distance < 0.75*n.distance:
                     good.append([m])
                     cost.append(m.distance)
+                    print(f"{Fore.LIGHTCYAN_EX} Cost: {m.distance}")
 
             avgDist = sum(cost)/len(cost)
+            maxdiff = np.max(cost) - avgDist
+            #avgDist = 3*np.std(cost)
             print(f"{Fore.RED}Num of features: {len(matches)}")
             print(f"{Fore.CYAN}Avg cost: {avgDist}")
             self.orientationImg = cv2.drawMatchesKnn(rotated,kpRef,curImg,kpCur, good,None,flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS)
@@ -265,8 +327,14 @@ class SmokeDetectorDetector():
             self.outOrientation = CvBridge().cv2_to_imgmsg(self.orientationImg, encoding = 'rgb8')
             self.pub_ORIENTATION.publish(self.outOrientation)
             costList.append(avgDist)
+            diffList.append(maxdiff)
+            graphImg = self.drawGraph(angle=angle, cost=avgDist, image=graphImage)
+            self.outGraph = CvBridge().cv2_to_imgmsg(graphImg, encoding='rgb8')
+            self.pub_GRAPH.publish(self.outGraph)
             time.sleep(0.1)
         print(f"{Fore.LIGHTMAGENTA_EX} costlist: {costList}")
         print(f"{Fore.LIGHTCYAN_EX} Angle: {np.argmin(costList)}")
+        print(f"{Fore.MAGENTA}Potetnial orientations: {np.argsort(costList)[:30]}")
+        print(f"{Fore.BLUE}Maximum differences: {np.argsort(diffList)[:30]}")
 if __name__ == "__main__":
     SmokeDetectorDetector()
