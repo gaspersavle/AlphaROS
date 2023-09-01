@@ -368,7 +368,7 @@ class SingleImageAlphaPose():
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
         #init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
-        self.initBodyDict()
+        #self.initBodyDict()
         self.initProxDict()
         self.initMarkerDict()
         #init rospy
@@ -452,7 +452,7 @@ class SingleImageAlphaPose():
             if self.enableCamPose == True and self.colorTopic == '/realsense_top/color/image_raw':
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
             self.markerPub()
-            
+            print(f"{Fore.LIGHTBLUE_EX} -------{type(self.vis_POSE)}-------")
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
             
@@ -475,6 +475,7 @@ class SingleImageAlphaPose():
 
             if self.camPose != None and self.camSel == True:
                 self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
+                self.SendTransform2tf(p=[0, -1.9, 2.80],q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
                 # q=self.camRot,
                         
             if self.pose != None:
@@ -667,47 +668,52 @@ class SingleImageAlphaPose():
     def initMarkerDict(self):
         per = 0.0235
 
-        self.markerDict= {1:[[-0.2+per,0.3, 0.825], # marker 1
-                        [-0.2+per,0.2-per, 0.825],
-                        [-0.3+per,0.2-per, 0.825],
-                        [-0.3+per,0.3-per, 0.825]],
+        self.markerDict= {
+            0:[
+                [-0.8, 0.4, 0.825],
+                [-0.8, 0.3, 0.825],
+                [-0.9, 0.3, 0.825],
+                [-0.9, 0.4, 0.825]
+            ],
+            1:[
+                [-0.3, 0.4, 0.825],
+                [-0.3, 0.3, 0.825],
+                [-0.4, 0.3, 0.825],
+                [-0.4, 0.4, 0.825]
+            ],
+            2:[
+                [-0.2, 0.3, 0.825],
+                [-0.2, 0.2, 0.825],
+                [-0.3, 0.2, 0.825],
+                [-0.3, 0.3, 0.825]
+            ],
+            3:[
+                [-0.2, 0.05, 0.825],
+                [-0.2, -0.05, 0.825],
+                [-0.3, -0.05, 0.825],
+                [-0.3, 0.05, 0.825]
+            ],
+            4:[
+                [-0.2, -0.2, 0.825],
+                [-0.2, -0.3, 0.825],
+                [-0.3, -0.3, 0.825],
+                [-0.3, -0.2, 0.825]
+            ],
+            5:[
+                [0.05, -0.2, 0.825],
+                [0.05, -0.3, 0.825],
+                [-0.05, -0.3, 0.825],
+                [-0.05, -0.2, 0.825]
+            ],
+            6:[
+                [0.3, -0.2, 0.825],
+                [0.3, -0.3, 0.825],
+                [0.2, -0.3, 0.825],
+                [0.2, -0.2, 0.825]
+            ]
+        }
 
-                    2: [[0.3-per,0.3-per, 0.825], # marker 2
-                        [0.3-per,0.2-per, 0.825],
-                        [0.2-per,0.2-per, 0.825],
-                        [0.2-per,0.3-per, 0.825]],
 
-                    3: [[0.4+per,0.85+per, 0.825], # marker 3
-                        [0.4+per,0.75+per, 0.825],
-                        [0.3+per,0.75+per, 0.825],
-                        [0.3+per,0.85+per, 0.825]],
-
-                    4: [[0.9-per,0.4+per, 0.825], # marker 4
-                        [0.9-per,0.3+per, 0.825],
-                        [0.8-per,0.3+per, 0.825],
-                        [0.8-per,0.4+per, 0.825]],
-
-                    5: [[-0.2+per,1+per, 0.825], # marker 5
-                        [-0.2+per,0.9+per, 0.825],
-                        [-0.3+per,0.9+per, 0.825],
-                        [-0.3+per,1+per, 0.825]],
-
-                    6: [[0.3-per,1+per, 0.825], # marker 6
-                        [0.3-per,0.9+per, 0.825],
-                        [0.2-per,0.9+per, 0.825],
-                        [0.2-per,1+per, 0.825]],
-
-                    7: [[0.4+per,1+per, 0.825], # marker 7
-                        [0.4+per,0.9+per, 0.825],
-                        [0.3+per,0.9+per, 0.825],
-                        [0.3+per,1+per, 0.825]],
-
-                    8: [[0.9-per,1+per, 0.825], # marker 8
-                        [0.9-per,0.9+per, 0.825],
-                        [0.8-per,0.9+per, 0.825],
-                        [0.8-per,1+per, 0.825]]}
-
-    def initBodyDict(self):
         """
         This funbction initialises the body dictionary which stores the locations of all the joints in the human body
         and the information required to publish them, calculate joint angles and smooth the motion
@@ -936,18 +942,28 @@ class SingleImageAlphaPose():
             # loop over the detected ArUCo corners
             marker = []
             ids = np.ndarray.flatten(ids)
-            if len(corners) == 8:
-                self.corners = np.asfarray(corners).reshape(32,2)
+            if len(corners) == 7:
+            #if len(corners) == 8:
+                print(f"{Fore.BLUE} CORNERS: {len(corners)} | IDS: {ids}")
+                self.corners = np.asfarray(corners).reshape(28,2)
+                #self.corners = np.asfarray(corners).reshape(32,2)
 
             # A dictionary storing the corners of each detected marker as an array of 4
-            self.cornerDict = {1: None,
+            self.cornerDict = {0: None,
+                                    1: None,
+                                    2: None,
+                                    3: None,
+                                    4: None,
+                                    5: None,
+                                    6: None}
+            
+            """self.cornerDict = {1: None,
                                     2: None,
                                     3: None,
                                     4: None,
                                     5: None,
                                     6: None,
-                                    7: None,
-                                    8: None}
+                                    7: None}"""
             print(f"{Fore.GREEN} TEST")
             #if len(corners) == 8:
             for (id, corner) in zip(ids,corners):
@@ -1016,6 +1032,9 @@ class SingleImageAlphaPose():
             """ else:
                 print(f"{Fore.MAGENTA}Not enough visible markers!")
                 pass """
+            return image
+        
+        else:
             return image
     
     def getProximity(self):
@@ -1091,7 +1110,7 @@ class SingleImageAlphaPose():
             marker.scale.y = 0.1
             marker.scale.z = 0.01
             marker.frame_locked = False
-            #print(f"{Fore.GREEN}Marker: {key} {Fore.BLUE}|{Fore.RED} Location: {cx, cy, item[0][2]}")
+            #prit(f"{Fore.GREEN}Marker: {key} {Fore.BLUE}|{Fore.RED} Location: {cx, cy, item[0][2]}")
             markerarray.markers.append(marker) 
             #print(f"{Fore.LIGHTWHITE_EX}Item: {item[3]}")
             self.SendTransform2tf(p=[marker.pose.position.x, marker.pose.position.y, marker.pose.position.z], parent_frame='world', child_frame=('marker/'+str(key)))
@@ -1278,6 +1297,9 @@ class SingleImageAlphaPose():
             if self.cornerDict[marker] != None:
                 for subind, tup in enumerate(self.cornerDict[marker]):
                     cornerList.append(list(self.cornerDict[marker][subind]))
+                    print(f"{Fore.LIGHTMAGENTA_EX}MARKER: {marker} | SUBIND: {subind}")
+                    print(f"{Fore.LIGHTWHITE_EX}CORNERDICT: {self.cornerDict}")
+                    print(f"{Fore.LIGHTCYAN_EX} MARKERDICT: {self.markerDict}")
                     markerList.append(self.markerDict[marker][subind])
 
         markerArray = np.asfarray(markerList, dtype=np.float32)
@@ -1303,11 +1325,11 @@ class SingleImageAlphaPose():
         
         #Publish temporary pose so compensation can happen
         camPose = [-self.tvec[0], -self.tvec[1], self.tvec[2]]
-        self.SendTransform2tf(p=camPose,q=rotq, parent_frame="/world", child_frame="/rs_top")
-        correctecdPose = self.CamPoseCorrection(initial_pose=camPose)
+        #self.SendTransform2tf(p=camPose,q=rotq, parent_frame="/world", child_frame="/rs_top")
+        #correctedPose = self.CamPoseCorrection(initial_pose=camPose)
+        correctedPose = [0, -1.9, 2.80]
 
-
-        return correctecdPose, rotq
+        return correctedPose, rotq
 
     def CamPoseCorrection(self, initial_pose:list)->list:
         """
@@ -1359,7 +1381,7 @@ class SingleImageAlphaPose():
         mz = np.mean(errorz)
         print(f"{Fore.RED}e X: {mx} \n{Fore.GREEN}e Y: {my} \n{Fore.BLUE}e Z: {mz}")
         
-        return [initial_pose[0]+mx, initial_pose[1]+my, initial_pose[2]+mz]
+        return [initial_pose[0]+mx, initial_pose[1]-my, initial_pose[2]+mz]
         
 
 
