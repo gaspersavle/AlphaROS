@@ -385,6 +385,7 @@ class SingleImageAlphaPose():
             
             self.IMAGE_HEIGHT = self.img_POSE.shape[0]
             self.IMAGE_WIDTH = self.img_POSE.shape[1]
+            print(f"{Fore.MAGENTA} COLOUR size = {self.IMAGE_HEIGHT, self.IMAGE_WIDTH}")
             #self.img_POSE = cv2.resize(self.img_POSE, ())
             self.pose = self.process("demo", self.img_POSE)
             self.vis_POSE = self.vis(self.img_POSE, self.pose)
@@ -461,6 +462,7 @@ class SingleImageAlphaPose():
         
         if self.enablePose and self.camSel:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
+            print(f"{Fore.MAGENTA} DEPTH size  PRE= {self.img_DEPTH.shape[0], self.img_DEPTH.shape[1]}")
             if self.img_DEPTH.shape[0] != self.IMAGE_HEIGHT:
                 self.img_blur_DEPTH = cv2.resize(self.img_DEPTH, dsize=[self.IMAGE_WIDTH, self.IMAGE_HEIGHT])
                 self.highRes = True
@@ -471,11 +473,13 @@ class SingleImageAlphaPose():
             #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
             #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
             
+            print(f"{Fore.MAGENTA} DEPTH size  POST= {self.img_blur_DEPTH.shape[0], self.img_blur_DEPTH.shape[1]}")
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
 
             if self.camPose != None and self.camSel == True:
                 self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
-                self.SendTransform2tf(p=[0, -1.9, 2.80],q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
+                #self.SendTransform2tf(p=[0, -1.9, 2.80],q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
+                
                 # q=self.camRot,
                         
             if self.pose != None:
@@ -554,13 +558,13 @@ class SingleImageAlphaPose():
                             
                             rotq = r2q(rot)
                             
-                            self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
+                            #self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
                         else: 
                             #print(f"{Fore.RED}Append to: {key}\n{joint}")
                             #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
                             
                             
-                            transToWorld = self.GetTrans('world',joint['cf']+'/rs')
+                            #transToWorld = self.GetTrans('world',joint['cf']+'/rs')
                     
                             worldPos = transToWorld.translation
                             #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
@@ -575,7 +579,7 @@ class SingleImageAlphaPose():
                                 transJoint = joint['transj']
                             else:
                                 transJoint = [0,0,0]
-                            self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
+                            #self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
                             
                             #print(key,'World Z: ', joint['worldz'])
                 if self.args.circles == True:
@@ -957,15 +961,7 @@ class SingleImageAlphaPose():
                                     5: None,
                                     6: None}
             
-            """self.cornerDict = {1: None,
-                                    2: None,
-                                    3: None,
-                                    4: None,
-                                    5: None,
-                                    6: None,
-                                    7: None}"""
             print(f"{Fore.GREEN} TEST")
-            #if len(corners) == 8:
             for (id, corner) in zip(ids,corners):
                 print(f"{Fore.MAGENTA}Corner: {corner} | Type: {type(corner)}")
                 corners = corner.reshape((4, 2))
@@ -978,7 +974,7 @@ class SingleImageAlphaPose():
                 bottomLeft = [int(bottomLeft[0]), int(bottomLeft[1])]
                 topLeft = [int(topLeft[0]), int(topLeft[1])]
                 self.cornerDict[id] = [topRight, bottomRight, bottomLeft, topLeft]
-                #print(topLeft)
+ 
                 # draw the bounding box of the ArUCo detection
                 cv2.line(image, topLeft, topRight, (0, 255, 0), 2)
                 cv2.line(image, topRight, bottomRight, (0, 255, 0), 2)
@@ -1262,14 +1258,30 @@ class SingleImageAlphaPose():
                             [0.0, 623.68514, 243.40506],
                             [0.0,0.0,1.0]], dtype=np.float32)
         
-        self.camMatHighRes = np.array([[898.883759,0.0,  632.680126],
-                            [0.0, 910.480780, 394.429186],
+        self.camMatHighRes = np.array([[909.4385,0.0,  641.420126],
+                            [0.0, 909.540780, 357.579186],
                             [0.0,0.0,1.0]], dtype=np.float32)
+        
+        self.camMat = np.array([[865.717580, 0.00000, 646.303204],
+                            [0.0, 865.878228, 362.008238],
+                            [0.0,0.0,1.0]], dtype=np.float32)
+        self.fx = self.camMat[0, 0]
+        self.cx = self.camMat[0, 2]
+        self.fy = self.camMat[1, 1]
+        self.cy = self.camMat[1, 2]
+        
+
+        #self.camMat = np.array([[496.915339, -1.383087, 635.775274],
+        #                    [0.0, 486.192335, 355.610420],
+        #                    [0.0,0.0,1.0]], dtype=np.float32)
+
+        self.distCoefs = np.array([0.059732, -0.104126, -0.003368, -0.000256, 0.000000], dtype=np.float32)
 
         self.distCoefsLowRes = np.array([0.140602, -0.332482, -0.000699, -0.004239, 0.000000], dtype=np.float32)
 
-        self.distCoefsHighRes = np.array([0.114931, -0.183645 , 0.015991, -0.012492, 0.000000], dtype=np.float32)
+        #self.distCoefsHighRes = np.array([0.114931, -0.183645 , 0.015991, -0.012492, 0.000000], dtype=np.float32)
         
+        self.distCoefsHighRes = np.array([0, 0 , 0, 0, 0.000000], dtype=np.float32)
     
     def getCamPose(self):
         """ 
@@ -1305,29 +1317,35 @@ class SingleImageAlphaPose():
         markerArray = np.asfarray(markerList, dtype=np.float32)
         cornerArray = np.asfarray(cornerList, dtype=np.float32)
 
-        if self.highRes == True:
+        """if self.highRes == True:
             cmat = self.camMatHighRes
             dcoef = self.distCoefsHighRes
         else:
             cmat = self.camMatLowRes
-            dcoef = self.distCoefsLowRes
+            dcoef = self.distCoefsLowRes """
+        cmat = self.camMat
+        dcoef = self.distCoefs
 
         flag = cv2.SOLVEPNP_ITERATIVE 
+        #flag = cv2.SOLVEPNP_IPPE
         print(f"{Fore.GREEN}Marker array: {markerArray}| Length: {Fore.LIGHTGREEN_EX}{markerArray.shape} | Type: {type(markerArray[0][0])}")
         print(f"{Fore.RED}Corner array: {cornerArray}| Length: {Fore.LIGHTRED_EX}{cornerArray.shape} | Type: {type(cornerArray[0][0])}")
         retval, self.rvec, self.tvec = cv2.solvePnP(markerArray, cornerArray, cmat, dcoef, flags=flag)
-        print(f"{Fore.LIGHTCYAN_EX}Entering calib...{self.rvec}")
+        print(f"{Fore.RED}################################################\n DIAGNOSTIC:\n {Fore.BLUE} TVEC: {self.tvec}\n {Fore.GREEN}RVEC:{self.rvec}\n################################################")
+
         rotm = np.zeros((3,3)) 
         cv2.Rodrigues(self.rvec, rotm)
+        #rotm = rot_x(-135, unit='deg')
         rotm = np.transpose(rotm)
         rotq = r2q(rotm)
         print('RotQ: ',rotq, 'RotM: ',rotm )
         
         #Publish temporary pose so compensation can happen
         camPose = [-self.tvec[0], -self.tvec[1], self.tvec[2]]
-        #self.SendTransform2tf(p=camPose,q=rotq, parent_frame="/world", child_frame="/rs_top")
-        #correctedPose = self.CamPoseCorrection(initial_pose=camPose)
-        correctedPose = [0, -1.9, 2.80]
+        self.SendTransform2tf(p=camPose,q=rotq, parent_frame="/world", child_frame="/rs_top")
+        correctedPose = self.CamPoseCorrection(initial_pose=camPose)
+        #correctedPose = [0, -1.6, 2.8]
+        #correctedPose = camPose
 
         return correctedPose, rotq
 
@@ -1381,7 +1399,7 @@ class SingleImageAlphaPose():
         mz = np.mean(errorz)
         print(f"{Fore.RED}e X: {mx} \n{Fore.GREEN}e Y: {my} \n{Fore.BLUE}e Z: {mz}")
         
-        return [initial_pose[0]+mx, initial_pose[1]-my, initial_pose[2]+mz]
+        return [initial_pose[0]+mx, initial_pose[1]+my, initial_pose[2]]
         
 
 
@@ -1519,8 +1537,11 @@ class SingleImageAlphaPose():
             worldPos(list) : Real world position (in respect to camera)
         """
         
-        x = (u - (322.41944)) / 625.11944
-        y = (v - (243.40506)) / 623.68514
+        #x = (u - (496.91)) / 635.7753
+        x = (u - (self.cx)) / self.fx
+
+        #y = (v - (489.182)) / 355.61024
+        y = (v - (self.cy)) / self.fy
 
         X = (z * x)
         Y = (z * y)
