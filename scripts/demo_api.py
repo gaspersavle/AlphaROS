@@ -409,6 +409,7 @@ class SingleImageAlphaPose():
                             #print(keySegs)
                             joint['x'] = int(self.keypoints[16-i][0])
                             joint['y'] = int(self.keypoints[16-i][1])
+                            print(f"{Fore.YELLOW} {joint}")
                             #print(f"{Fore.RED}{key}\n{Fore.BLACK}",joint)
                             i+=1
                     
@@ -453,7 +454,6 @@ class SingleImageAlphaPose():
             if self.enableCamPose == True and self.colorTopic == '/realsense_top/color/image_raw':
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
             self.markerPub()
-            print(f"{Fore.LIGHTBLUE_EX} -------{type(self.vis_POSE)}-------")
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
             
@@ -469,9 +469,6 @@ class SingleImageAlphaPose():
             else:
                 self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
                 self.highRes = False
-            #print(f"{Fore.GREEN}Depth: {self.img_blur_DEPTH[350, 240]}")
-            #self.colourised = cv2.cvtColor(self.img_DEPTH, cv2.COLOR_GRAY2RGB)
-            #self.vis_DEPTH = self.vis(self.img_DEPTH, self.pose)
             
             print(f"{Fore.MAGENTA} DEPTH size  POST= {self.img_blur_DEPTH.shape[0], self.img_blur_DEPTH.shape[1]}")
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
@@ -508,21 +505,6 @@ class SingleImageAlphaPose():
                     np.put(joint['qz'], 4, joint['z'])
                     
 
-                    """ print(f"{Fore.WHITE}------------------------------------------------")
-                    print(f"{Fore.CYAN}Sklep: {key}")
-
-                    print(f"{Fore.RED}X: {joint['x']}")
-                    #print(f"{Fore.RED}Joint X: {joint['qx']}")
-
-                    print(f"{Fore.GREEN}X: {joint['y']}")
-                    #print(f"{Fore.RED}Joint Y: {joint['qy']}")
-
-                    print(f"{Fore.BLUE}X: {joint['z']}")
-                    #print(f"{Fore.RED}Joint Z: {joint['qz']}")
-                    
-                    print(f"{Fore.WHITE}------------------------------------------------") """
-                    #print(joint['y'])
-                    #print(f"{Fore.LIGHTBLUE_EX}{key}\n  Qx: {joint['qx']}\n  Qy: {joint['qy']}\n  Qz: {joint['qz']}")
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
@@ -541,7 +523,7 @@ class SingleImageAlphaPose():
                     jointy = self.GetMoveAvg(joint['qy'])
                     jointz = self.GetMoveAvg(joint['qz'])
                    
-
+                    print(f"{Fore.LIGHTGREEN_EX} JOINT: {key}")
                     #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
                     jointxyz = self.uv_to_XY(jointx, jointy, jointz)
 
@@ -564,7 +546,7 @@ class SingleImageAlphaPose():
                             #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
                             
                             
-                            #transToWorld = self.GetTrans('world',joint['cf']+'/rs')
+                            transToWorld = self.GetTrans('world',joint['cf']+'/rs')
                     
                             worldPos = transToWorld.translation
                             #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
