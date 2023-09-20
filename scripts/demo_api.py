@@ -27,7 +27,7 @@ import rospy
 import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
-from std_msgs.msg import Bool, String
+from std_msgs.msg import Bool, String, Float32
 from proxmsg.msg import PandaProx
 from std_srvs.srv import SetBool 
 from sensor_msgs.msg import Image, CameraInfo
@@ -385,7 +385,6 @@ class SingleImageAlphaPose():
             
             self.IMAGE_HEIGHT = self.img_POSE.shape[0]
             self.IMAGE_WIDTH = self.img_POSE.shape[1]
-            print(f"{Fore.MAGENTA} COLOUR size = {self.IMAGE_HEIGHT, self.IMAGE_WIDTH}")
             #self.img_POSE = cv2.resize(self.img_POSE, ())
             self.pose = self.process("demo", self.img_POSE)
             self.vis_POSE = self.vis(self.img_POSE, self.pose)
@@ -409,7 +408,6 @@ class SingleImageAlphaPose():
                             #print(keySegs)
                             joint['x'] = int(self.keypoints[16-i][0])
                             joint['y'] = int(self.keypoints[16-i][1])
-                            print(f"{Fore.YELLOW} {joint}")
                             #print(f"{Fore.RED}{key}\n{Fore.BLACK}",joint)
                             i+=1
                     
@@ -462,7 +460,6 @@ class SingleImageAlphaPose():
         
         if self.enablePose and self.camSel:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
-            print(f"{Fore.MAGENTA} DEPTH size  PRE= {self.img_DEPTH.shape[0], self.img_DEPTH.shape[1]}")
             if self.img_DEPTH.shape[0] != self.IMAGE_HEIGHT:
                 self.img_blur_DEPTH = cv2.resize(self.img_DEPTH, dsize=[self.IMAGE_WIDTH, self.IMAGE_HEIGHT])
                 self.highRes = True
@@ -470,7 +467,6 @@ class SingleImageAlphaPose():
                 self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
                 self.highRes = False
             
-            print(f"{Fore.MAGENTA} DEPTH size  POST= {self.img_blur_DEPTH.shape[0], self.img_blur_DEPTH.shape[1]}")
             #print(f"{Fore.YELLOW} {self.img_DEPTH}")
 
             if self.camPose != None and self.camSel == True:
@@ -523,7 +519,6 @@ class SingleImageAlphaPose():
                     jointy = self.GetMoveAvg(joint['qy'])
                     jointz = self.GetMoveAvg(joint['qz'])
                    
-                    print(f"{Fore.LIGHTGREEN_EX} JOINT: {key}")
                     #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
                     jointxyz = self.uv_to_XY(jointx, jointy, jointz)
 
@@ -650,52 +645,71 @@ class SingleImageAlphaPose():
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
         self.pub_PANDA_PROX_1 = rospy.Publisher('/alphapose/prox/panda_1', PandaProx, queue_size= 1)
         self.pub_PANDA_PROX_2 = rospy.Publisher('/alphapose/prox/panda_2', PandaProx, queue_size= 1)
+        self.pub_NI = rospy.Publisher("/panda_1/dmp_speed", Float32, queue_size= 1)
 
     def initMarkerDict(self):
-        per = 0.0235
+        margin = 0.01
 
         self.markerDict= {
             0:[
-                [-0.8, 0.4, 0.825],
-                [-0.8, 0.3, 0.825],
-                [-0.9, 0.3, 0.825],
-                [-0.9, 0.4, 0.825]
+                [-1.4+margin, 0.9-margin, 0.825],
+                [-1.4+margin, 0.8-margin, 0.825],
+                [-1.5+margin, 0.8-margin, 0.825],
+                [-1.5+margin, 0.9-margin, 0.825]
             ],
             1:[
-                [-0.3, 0.4, 0.825],
-                [-0.3, 0.3, 0.825],
-                [-0.4, 0.3, 0.825],
-                [-0.4, 0.4, 0.825]
+                [-1.4+margin, 0.4+margin, 0.825],
+                [-1.4+margin, 0.3+margin, 0.825],
+                [-1.5+margin, 0.3+margin, 0.825],
+                [-1.5+margin, 0.4+margin, 0.825]
             ],
             2:[
-                [-0.2, 0.3, 0.825],
-                [-0.2, 0.2, 0.825],
-                [-0.3, 0.2, 0.825],
-                [-0.3, 0.3, 0.825]
+                [-0.8+margin, 0.9-margin, 0.825],
+                [-0.8+margin, 0.8-margin, 0.825],
+                [-0.9+margin, 0.8-margin, 0.825],
+                [-0.9+margin, 0.9-margin, 0.825]
             ],
             3:[
-                [-0.2, 0.05, 0.825],
-                [-0.2, -0.05, 0.825],
-                [-0.3, -0.05, 0.825],
-                [-0.3, 0.05, 0.825]
+                [-0.8+margin, 0.4+margin, 0.825],
+                [-0.8+margin, 0.3+margin, 0.825],
+                [-0.9+margin, 0.3+margin, 0.825],
+                [-0.9+margin, 0.4+margin, 0.825]
             ],
             4:[
-                [-0.2, -0.2, 0.825],
-                [-0.2, -0.3, 0.825],
-                [-0.3, -0.3, 0.825],
-                [-0.3, -0.2, 0.825]
+                [-0.55+margin, 0.4+margin, 0.825],
+                [-0.55+margin, 0.3+margin, 0.825],
+                [-0.65+margin, 0.3+margin, 0.825],
+                [-0.65+margin, 0.4+margin, 0.825]
             ],
             5:[
-                [0.05, -0.2, 0.825],
-                [0.05, -0.3, 0.825],
-                [-0.05, -0.3, 0.825],
-                [-0.05, -0.2, 0.825]
+                [-0.2+margin, 0.3-margin, 0.825],
+                [-0.2+margin, 0.2-margin, 0.825],
+                [-0.3+margin, 0.2-margin, 0.825],
+                [-0.3+margin, 0.3-margin, 0.825]
             ],
             6:[
-                [0.3, -0.2, 0.825],
-                [0.3, -0.3, 0.825],
-                [0.2, -0.3, 0.825],
-                [0.2, -0.2, 0.825]
+                [-0.2+margin, 0.05-margin, 0.825],
+                [-0.2+margin, -0.05-margin, 0.825],
+                [-0.3+margin, -0.05-margin, 0.825],
+                [-0.3+margin, 0.05-margin, 0.825]
+            ],
+            7:[
+                [-0.2+margin, -0.2+margin, 0.825],
+                [-0.2+margin, -0.3+margin, 0.825],
+                [-0.3+margin, -0.3+margin, 0.825],
+                [-0.3+margin, -0.2+margin, 0.825]
+            ],
+            8:[
+                [0.05-margin, -0.2+margin, 0.825],
+                [0.05-margin, -0.3+margin, 0.825],
+                [-0.05-margin, -0.3+margin, 0.825],
+                [-0.05-margin, -0.2+margin, 0.825]
+            ],
+            9:[
+                [0.3-margin, -0.2+margin, 0.825],
+                [0.3-margin, -0.3+margin, 0.825],
+                [0.2-margin, -0.3+margin, 0.825],
+                [0.2-margin, -0.2+margin, 0.825]
             ]
         }
 
@@ -943,7 +957,6 @@ class SingleImageAlphaPose():
                                     5: None,
                                     6: None}
             
-            print(f"{Fore.GREEN} TEST")
             for (id, corner) in zip(ids,corners):
                 print(f"{Fore.MAGENTA}Corner: {corner} | Type: {type(corner)}")
                 corners = corner.reshape((4, 2))
@@ -1016,7 +1029,7 @@ class SingleImageAlphaPose():
             return image
     
     def getProximity(self):
-        for link, loc in self.pandaPose1.items():
+        """ for link, loc in self.pandaPose1.items():
             self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
             self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
             for joint, dist in self.pandaPose1[link]['PROX'].items():
@@ -1026,9 +1039,20 @@ class SingleImageAlphaPose():
                     self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
             #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}{type(self.pandaPose1[link]['PROX']['head'])}\nPos 2: {self.pandaPose2[link]['POS']}")
             #print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {self.pandaPose1[link]['PROX']}\Prox 2: {self.pandaPose2[link]['PROX']}")
-  
-        self.proxPub("Panda_1", self.pandaPose1)
-        self.proxPub("Panda_2", self.pandaPose2)
+        """
+        self.trans = self.GetTrans('head_default/rs', 'panda_1/panda_EE').translation
+        print(f"{Fore.RED} Trans: {self.trans}")
+        self.proximity = math.sqrt((self.trans.x)**2+(self.trans.y)**2+(self.trans.z)**2)
+        if self.proximity <= 1.5:
+            oldrange = 1.5-0
+            newrange = 1 - 0
+            ni = 1+(self.proximity*newrange)/oldrange
+            print(f"{Fore.LIGHTCYAN_EX}Proximity: {self.proximity} | NI: {ni}")
+        else: 
+            ni = 1
+        
+
+        self.pub_NI.publish(ni)
         #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
                 
 
@@ -1291,9 +1315,6 @@ class SingleImageAlphaPose():
             if self.cornerDict[marker] != None:
                 for subind, tup in enumerate(self.cornerDict[marker]):
                     cornerList.append(list(self.cornerDict[marker][subind]))
-                    print(f"{Fore.LIGHTMAGENTA_EX}MARKER: {marker} | SUBIND: {subind}")
-                    print(f"{Fore.LIGHTWHITE_EX}CORNERDICT: {self.cornerDict}")
-                    print(f"{Fore.LIGHTCYAN_EX} MARKERDICT: {self.markerDict}")
                     markerList.append(self.markerDict[marker][subind])
 
         markerArray = np.asfarray(markerList, dtype=np.float32)
@@ -1313,7 +1334,6 @@ class SingleImageAlphaPose():
         print(f"{Fore.GREEN}Marker array: {markerArray}| Length: {Fore.LIGHTGREEN_EX}{markerArray.shape} | Type: {type(markerArray[0][0])}")
         print(f"{Fore.RED}Corner array: {cornerArray}| Length: {Fore.LIGHTRED_EX}{cornerArray.shape} | Type: {type(cornerArray[0][0])}")
         retval, self.rvec, self.tvec = cv2.solvePnP(markerArray, cornerArray, cmat, dcoef, flags=flag)
-        print(f"{Fore.RED}################################################\n DIAGNOSTIC:\n {Fore.BLUE} TVEC: {self.tvec}\n {Fore.GREEN}RVEC:{self.rvec}\n################################################")
 
         rotm = np.zeros((3,3)) 
         cv2.Rodrigues(self.rvec, rotm)
@@ -1381,7 +1401,7 @@ class SingleImageAlphaPose():
         mz = np.mean(errorz)
         print(f"{Fore.RED}e X: {mx} \n{Fore.GREEN}e Y: {my} \n{Fore.BLUE}e Z: {mz}")
         
-        return [initial_pose[0]+mx, initial_pose[1]+my, initial_pose[2]]
+        return [initial_pose[0]+mx, initial_pose[1]+my, initial_pose[2]+mz]
         
 
 

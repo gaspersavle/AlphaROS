@@ -327,7 +327,7 @@ class SmokeDetectorDetector():
             graphImg = self.drawGraph(angle=angle, correlation=avgDist, image=graphImage)
             self.outGraph = CvBridge().cv2_to_imgmsg(graphImg, encoding='rgb8')
             self.pub_GRAPH.publish(self.outGraph)
-            time.sleep(0.1)
+            #time.sleep(0.1)
         print(f"{Fore.LIGHTMAGENTA_EX} costlist: {costList}")
         print(f"{Fore.LIGHTCYAN_EX} Angle: {np.argmin(costList)}")
         print(f"{Fore.MAGENTA}Potetnial orientations: {np.argsort(costList)[:30]}")
