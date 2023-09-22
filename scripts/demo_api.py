@@ -1029,35 +1029,34 @@ class SingleImageAlphaPose():
             return image
     
     def getProximity(self):
-        """ for link, loc in self.pandaPose1.items():
+        """for link, loc in self.pandaPose1.items():
             self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
-            self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
+            #self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
             for joint, dist in self.pandaPose1[link]['PROX'].items():
                 if self.body[joint]['worldx'] != None:
                     self.pandaPose1[link]['PROX'][joint] = math.sqrt((self.pandaPose1[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose1[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose1[link]['POS'].z+self.body[joint]['worldz'])**2)
                     #print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
-                    self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
+                    #self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
             #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}{type(self.pandaPose1[link]['PROX']['head'])}\nPos 2: {self.pandaPose2[link]['POS']}")
             #print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {self.pandaPose1[link]['PROX']}\Prox 2: {self.pandaPose2[link]['PROX']}")
         """
         self.trans = self.GetTrans('head_default/rs', 'panda_1/panda_EE').translation
-        print(f"{Fore.RED} Trans: {self.trans}")
         self.proximity = math.sqrt((self.trans.x)**2+(self.trans.y)**2+(self.trans.z)**2)
-        if self.proximity <= 1.5:
-            oldrange = 1.5-0
-            newrange = 1 - 0
-            ni = 1+(self.proximity*newrange)/oldrange
-            print(f"{Fore.LIGHTCYAN_EX}Proximity: {self.proximity} | NI: {ni}")
+        if self.proximity <= 1 > 0.25:
+            oldrange = 1-0
+            newrange = 0-1 #0-100
+            ni = -(self.proximity*newrange)/oldrange
+        elif self.proximity <= 0.3:
+            ni = 0
         else: 
             ni = 1
         
+        print(f"{Fore.LIGHTCYAN_EX}Proximity: {self.proximity} | NI: {ni}")
 
         self.pub_NI.publish(ni)
         #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
                 
 
-
-               
     
     def visMarker(self):
         """
