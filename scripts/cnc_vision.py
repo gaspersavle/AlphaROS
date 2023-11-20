@@ -29,24 +29,16 @@ from cv_bridge import CvBridge
 import colorama
 import heapq
 from colorama import Fore, Style
+from smokedet_vision import SmokeDetector
 ##################################################################
-
-class SmokeDetector():
-    def __init__(self, name:str, type:str, size:float, location:tuple):
-        self.name = name
-        self.type = type
-        self.size = size
-        self.location = location
-
 class SmokeDetectorDetector():
     def __init__(self):
         self.IMAGE_HEIGHT = None
         self.IMAGE_WIDTH = None
-        self.colorTopic = "/basler/image_rect_color"
-        self.depthTopic = None
-        self.camSel = False
+        self.colorTopic = "/realsense/color/image_raw"
+        self.depthTopic = "/realsense/aligned_depth_to_color/image_raw"
         self.enableDetection = False
-        self.enableNode = '/basler/smokedetection/enable'
+        self.enableNode = '/realsense/smokedetection/enable'
         self.enableCircleDetection = True
         self.orb = cv2.ORB_create()
         self.cropped = []
@@ -56,9 +48,8 @@ class SmokeDetectorDetector():
         rospy.spin()
 
     def colorCB(self, input):
-        self.img_basler = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+        self.input_img = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
         circles = self.getCircles() 
-        self.staticPub()
         detected = self.classifyAndPublishDetection(circles)
         #self.getOrientation(detected)
         self.getOrientationCorr(detected)
@@ -72,16 +63,14 @@ class SmokeDetectorDetector():
         #self.pub_ORIENTATION.publish(self.outOrientation)
         #print(f"{Fore.CYAN}Detected detectors: {self.detectedDetectors}|||\n Name: {self.detectedDetectors[0].name}\n Size: {self.detectedDetectors[0].size}")
     
-    def staticPub(self):
-        rot_basler = matrix(x = [0.,1.,0.,1.,0.,0.,0.,0.,-1.], shape=(3,3))
-        rot_basler_q = r2q(rot_basler)
-        self.SendTransform2tf(p = [0.291, 0.322, 1.34], q = rot_basler_q, parent_frame= 'vision_table_zero', child_frame="basler")
+    def depthCB(self, input):
+        self.depth_img = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
 
     def classifyAndPublishDetection(self, circles:np.ndarray) -> SmokeDetector:
         if circles is not None:
             circles = np.uint16(np.around(circles))
             detectedDetector = None
-            self.detectionImg = np.copy(self.img_basler)
+            self.detectionImg = np.copy(self.input_img)
             for index, i in enumerate(circles[0, :]):
                 center = (i[0], i[1])
                 radius = i[2]
@@ -103,26 +92,27 @@ class SmokeDetectorDetector():
                     )
                     cv2.putText(self.hsv, text=(detectedDetector.name + ' = '+detectedDetector.type), org=center, fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale= 2, color=(0, 255, 0), thickness= 2)
 
-                self.detectionImg=cv2.circle(self.detectionImg, center, radius, (0, 255, 0), 3)
-                self.detection_img=cv2.circle(self.detectionImg, center, 1, (0, 255, 0), 3)
-                worldpos = self.uv_to_XY(center[0], center[1], 1.3)
+                self.detectionImg=cv2.circle(self.hsv, center, radius, (0, 255, 0), 3)
+                self.detection_img=cv2.circle(self.hsv, center, 1, (0, 255, 0), 3)
+                depth = self.depth_img[center[1], center[0]]
+                worldpos = self.uv_to_XY(center[0], center[1], depth/1000)
                 rot_smokedetector = np.transpose(matrix(x = [0.,1.,0.,1.,0.,0.,0.,0.,-1.], shape=(3,3)))
                 smokedet_q = r2q(rot_smokedetector)
-                self.SendTransform2tf(p = worldpos, q = smokedet_q, parent_frame="basler", child_frame=(detectedDetector.type))
+                self.SendTransform2tf(p = worldpos, q = smokedet_q, parent_frame="/panda_2/realsense", child_frame=(detectedDetector.type))
                 return detectedDetector
 
     def getCircles(self) -> np.ndarray:
-        gray = cv2.cvtColor(self.img_basler, cv2.COLOR_RGB2GRAY)
+        gray = cv2.cvtColor(self.input_img, cv2.COLOR_RGB2GRAY)
         gray = cv2.medianBlur(gray, 5)
         rows = gray.shape[0]
         circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, 1, rows / 8,
                                 param1=100, param2=30,
-                                minRadius=100, maxRadius=150)
+                                minRadius=50, maxRadius=100)
         return circles 
 
     def getBrightness(self, circle_center:tuple, circle_radius:int) -> float:
         offset =40
-        self.hsv = cv2.cvtColor(self.img_basler, code=cv2.COLOR_RGB2HSV) 
+        self.hsv = cv2.cvtColor(self.input_img, code=cv2.COLOR_RGB2HSV) 
         newRadius = circle_radius-offset
         centerX = circle_center[0]
         centerY = circle_center[1]
@@ -162,6 +152,7 @@ class SmokeDetectorDetector():
                 break
         
         self.sub_INPUT_IMG = rospy.Subscriber(name = self.colorTopic, data_class = Image, callback = self.colorCB)
+        self.sub_DEPTH_IMG = rospy.Subscriber(name = self.depthTopic, data_class = Image, callback = self.depthCB)
         self.pub_DETECTION = rospy.Publisher("/vision/smokedetector/detection", Image, queue_size=1)
         self.pub_ORIENTATION = rospy.Publisher("/vision/smokedetector/orientation", Image, queue_size=1)
         self.pub_GRAPH = rospy.Publisher("/vision/smokedetector/graph", Image, queue_size=1)
@@ -242,16 +233,15 @@ class SmokeDetectorDetector():
         cv2.putText(image, text=("Corr: "+ str(correlation)[:3]), org=(180, 320), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 255, 255))
         cv2.putText(image, text=("Angle: "+ str(angle)),org=(180, 280), fontFace=cv2.FONT_HERSHEY_SIMPLEX, fontScale=1, color=(255, 0, 0))
         graphImg= np.copy(image)
-        #outGraph = cv2.resize(graphImg, (128, 128))
         return graphImg
-
-
+        #outGraph = cv2.resize(graphIp1.GetState()
+        
     def getOrientationCorr(self, detected:SmokeDetector):
         graphImage = np.zeros((360,360, 3), dtype=np.uint8)
         margin = 128
         #margin = 255
         smokedetCenter = detected.location
-        curImg =  self.img_basler[smokedetCenter[1]-margin:smokedetCenter[1]+margin, smokedetCenter[0]-margin:smokedetCenter[0]+margin]
+        curImg =  self.input_img[smokedetCenter[1]-margin:smokedetCenter[1]+margin, smokedetCenter[0]-margin:smokedetCenter[0]+margin]
         curImg = cv2.cvtColor(cv2.resize(curImg, dsize=(256,256)), code=cv2.COLOR_RGB2GRAY) 
         values = []
         if detected.type == 'hekatron':

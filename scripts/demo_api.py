@@ -367,19 +367,14 @@ class SingleImageAlphaPose():
         self.pose_model.eval()
         
         self.det_loader = DetectionLoader(get_detector(self.args), self.cfg, self.args)
-        #init_p, D, K, self.P, w, h = self.parse_calib_yaml(self.config.realsense.calibration_file)
-        #self.initBodyDict()
-        self.initProxDict()
-        self.initMarkerDict()
-        #init rospy
-        #print(f"{Fore.RED}{self.colorTopic}{self.depthTopic}")
+        self.dictInit()
         self.initRosPy()
-
         rospy.spin()
         
 ####################################################################################
 
     def pose_CB(self, input):
+        starttime = time.time()
         if self.enablePose and self.camSel:
             self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
             
@@ -391,10 +386,6 @@ class SingleImageAlphaPose():
 
             if self.pose != None:
                 self.keypoints = self.pose['result'][0]['keypoints']
-
-                self.secs = str(input.header.stamp)[:10]
-                self.nsecs = str(input.header.stamp)[10:]
-
                 #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
                 jIgnore = ['waist', 'torso', 'body']
                 tagIgnore = ['roll', 'pitch', 'yaw']
@@ -423,9 +414,6 @@ class SingleImageAlphaPose():
                 self.body['L_shoulder_yaw']['x'] = self.body['L_shoulder_pitch']['x'] = self.body['L_shoulder']['x'] 
                 self.body['L_shoulder_yaw']['y'] = self.body['L_shoulder_pitch']['y'] = self.body['L_shoulder']['y'] 
 
-                self.body['head_yaw']['x'] = self.body['head_roll']['x'] = self.body['head_pitch']['x'] = self.body['head']['x']
-                self.body['head_yaw']['y'] = self.body['head_roll']['y'] = self.body['head_pitch']['y'] = self.body['head']['y']
-
                 self.body['body']['x'] = (self.body['L_hip']['x']+self.body['R_hip']['x'])/2
                 self.body['body']['y'] = (self.body['L_hip']['y']+self.body['R_hip']['y'])/2
 
@@ -451,12 +439,18 @@ class SingleImageAlphaPose():
                 
             if self.enableCamPose == True and self.colorTopic == '/realsense_top/color/image_raw':
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
-            self.markerPub()
+            #self.markerPub()
+            #self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
+            #self.pub_POSE.publish(self.out_POSE)a
+            endtime = starttime-time.time()
+            print(f"{Fore.LIGHTMAGENTA_EX}pose time: {endtime}")
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
+
             
 
     def depth_CB(self, input):
+        starttime = time.time()
         
         if self.enablePose and self.camSel:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
@@ -526,39 +520,21 @@ class SingleImageAlphaPose():
 
                     if joint['cf'] != None:
                         self.SendTransform2tf(p=jointxyz, parent_frame=self.tfFrame, child_frame=(joint['cf']+'/rs'))
-                        if key == 'body':
-                            transToWorld = self.GetTrans('world',joint['cf']+'/rs')
-                            transJoint = [transToWorld.translation.x, transToWorld.translation.y, transToWorld.translation.z]
-                            #print(f"{Fore.RED} Rot: {transToWorld.rotation}")
-                            #rotJoint = [transToWorld.rotation.w, transToWorld.rotation.x, transToWorld.rotation.y, transToWorld.rotation.z]
-                            rot = rot_z(phi=-90, unit='deg')
-                            
-                            rotq = r2q(rot)
-                            
-                            #self.SendTransform2tf(p=transJoint, parent_frame=joint['pf'], child_frame=joint['cf'])
-                        else: 
-                            #print(f"{Fore.RED}Append to: {key}\n{joint}")
-                            #jointxyz = self.uv_to_XY(joint['x'], joint['y'], joint['z'])
-                            
-                            
-                            transToWorld = self.GetTrans('world',joint['cf']+'/rs')
-                    
+                        childFrame = (joint['cf']+'/rs')
+                        try:
+                            transToWorld = self.GetTrans('world',str(childFrame))
+                        except tf2_ros.ConnectivityException:
+                            if self.tfFrame == 'panda_2/realsense':
+                                print(f"{Fore.CYAN}Transformation from the {childFrame} to the 'world' frame doesn't exist, check if the controller is running")
+                            else:
+                                print(f"{Fore.LIGHTCYAN_EX}Transformation from the {childFrame} to the 'workd' frame doesn't exist, check if PNP calculation is valid")
+                        else:
                             worldPos = transToWorld.translation
-                            #print(f"{Fore.LIGHTBLACK_EX}Joint: {key} | Abs position: {worldPos}")
                             
                             joint['worldx'] = -worldPos.x
                             joint['worldy'] = -worldPos.y
                             joint['worldz'] = -worldPos.z
-                            #print(key, joint['worldz'])
 
-                            jointRot = self.getRot(joint=key)
-                            if joint['transj'] != None:
-                                transJoint = joint['transj']
-                            else:
-                                transJoint = [0,0,0]
-                            #self.SendTransform2tf(p=transJoint, q=jointRot, parent_frame=joint['pf'], child_frame=joint['cf'])
-                            
-                            #print(key,'World Z: ', joint['worldz'])
                 if self.args.circles == True:
                     
                     self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
@@ -569,11 +545,15 @@ class SingleImageAlphaPose():
                 self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
 
             
-                
+            stoptime = time.time() 
+            print(f"{Fore.LIGHTBLUE_EX}pose time: {stoptime}")
             self.pub_DEPTH.publish(self.out_DEPTH)
+            self.markerPub()
             if self.colorTopic == '/realsense_top/color/image_raw':
                 self.visMarker()
             self.getProximity()
+            
+            
 
 
             
@@ -643,13 +623,10 @@ class SingleImageAlphaPose():
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
-        self.pub_PANDA_PROX_1 = rospy.Publisher('/alphapose/prox/panda_1', PandaProx, queue_size= 1)
-        self.pub_PANDA_PROX_2 = rospy.Publisher('/alphapose/prox/panda_2', PandaProx, queue_size= 1)
         self.pub_NI = rospy.Publisher("/panda_1/dmp_speed", Float32, queue_size= 1)
 
-    def initMarkerDict(self):
+    def dictInit(self):
         margin = 0.01
-
         self.markerDict= {
             0:[
                 [-1.4+margin, 0.9-margin, 0.825],
@@ -712,12 +689,6 @@ class SingleImageAlphaPose():
                 [0.2-margin, -0.2+margin, 0.825]
             ]
         }
-
-
-        """
-        This funbction initialises the body dictionary which stores the locations of all the joints in the human body
-        and the information required to publish them, calculate joint angles and smooth the motion
-        """
 
         self.body ={'R_ankle': {'x': None, 'y': None, 'z': None, 'pf': 'r_knee_default', 
                         'cf': 'r_ankle_default','rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_knee',
@@ -835,24 +806,9 @@ class SingleImageAlphaPose():
                         'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
                         'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'head': {'x': None, 'y': None, 'z': None, 'pf': 'p_head_default', 'cf': 'head_default',
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_pitch', 
-                        'transj' : [0.055, 0, 0.11], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'head_roll': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default', 'cf': 'r_head_default',
+                    'head': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default', 'cf': 'head_default',
                         'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'torso', 
-                        'transj' : [0, 0, 0.055], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'head_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'r_head_default', 'cf': 'y_head_default',
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_roll', 
-                        'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'head_pitch': {'x': None, 'y': None, 'z': None, 'pf':'y_head_default', 'cf': 'p_head_default',
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'head_yaw', 
-                        'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'transj' : [0.055, 0, 0.11], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
                         'worldx': None, 'worldy': None, 'worldz': None},
 
                     'body': {'x': None, 'y': None, 'z': None,
@@ -869,50 +825,6 @@ class SingleImageAlphaPose():
                         'cf': 'waist_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'torso', 'parent': 'body', 'neg': False, 
                         'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
                         'worldx': None, 'worldy': None, 'worldz': None}}
-
-    def initProxDict(self):
-        # indices have 'k' in front of them to avoid string slicing
-        self.pandaPose1 = {
-            0: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            1: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            2: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            3: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            4: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            5: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            6: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            7: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            8: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-        } 
-        
-        self.pandaPose2 = {
-            0: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            1: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            2: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            3: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            4: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            5: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            6: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}}, 
-            7: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-            8: {'POS': None,
-                'PROX': {'head': None, 'L_shoulder': None, 'R_shoulder': None, 'L_elbow': None, 'R_elbow': None, 'L_wrist': None, 'R_wrist': None}},
-        } 
 
     def markerHandler(self, image:np.ndarray):
         """
@@ -984,77 +896,36 @@ class SingleImageAlphaPose():
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.5, (0, 255, 0), 2
                         )
-                
-                """ for (id, corner) in zip(ids,rejected):
-                    print(f"{Fore.MAGENTA}Corner: {corner} | Type: {type(corner)}")
-                    corners = corner.reshape((4, 2))
-                    print(f"{Fore.YELLOW}Corners: {corners} | Type: {type(corners)}")
-                    
-                    (topLeft, topRight, bottomRight, bottomLeft) = corners
-                    # convert each of the (x, y)-coordinate pairs to integers
-                    topRight = [int(topRight[0]), int(topRight[1])]
-                    bottomRight = [int(bottomRight[0]), int(bottomRight[1])]
-                    bottomLeft = [int(bottomLeft[0]), int(bottomLeft[1])]
-                    topLeft = [int(topLeft[0]), int(topLeft[1])]
-                    self.cornerDict[id] = [topRight, bottomRight, bottomLeft, topLeft]
-                    #print(topLeft)
-                    # draw the bounding box of the ArUCo detection
-                    cv2.line(image, topLeft, topRight, (255, 0, 0), 2)
-                    cv2.line(image, topRight, bottomRight, (255, 0, 0), 2)
-                    cv2.line(image, bottomRight, bottomLeft, (255, 0, 0), 2)
-                    cv2.line(image, bottomLeft, topLeft, (255, 0, 0), 2)
-                    cX = int((topLeft[0] + bottomRight[0]) / 2.0)
-                    cY = int((topLeft[1] + bottomRight[1]) / 2.0)
-                    cv2.circle(image, (cX, cY), 4, (0, 0, 255), -1)
-                    cv2.circle(image, topRight, 4, (255, 0, 0), -1)
-                    cv2.putText(image, str(id),
-                            (topLeft[0], topLeft[1] - 15),
-                            cv2.FONT_HERSHEY_SIMPLEX,
-                            0.5, (0, 255, 0), 2
-                            )
- """
             print(f"{Fore.CYAN}{self.cornerDict}")
-            #print(self.cornerdict)
-
             self.camPose, self.camRot = self.getCamPose()
-            
-            #print(f"{Fore.GREEN}ROTmat: {self.camRot}")
             self.enableCamPose = False
-            """ else:
-                print(f"{Fore.MAGENTA}Not enough visible markers!")
-                pass """
             return image
         
         else:
             return image
     
     def getProximity(self):
-        """for link, loc in self.pandaPose1.items():
-            self.pandaPose1[link]['POS'] = self.GetTrans('world', 'panda_1/panda_1_link'+str(link)).translation
-            #self.pandaPose2[link]['POS'] = self.GetTrans('world', 'panda_2/panda_2_link'+str(link)).translation
-            for joint, dist in self.pandaPose1[link]['PROX'].items():
-                if self.body[joint]['worldx'] != None:
-                    self.pandaPose1[link]['PROX'][joint] = math.sqrt((self.pandaPose1[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose1[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose1[link]['POS'].z+self.body[joint]['worldz'])**2)
-                    #print(f"{Fore.MAGENTA}{joint}\n   {Fore.RED}X:{self.body[joint]['worldx']}\n   {Fore.GREEN}Y:{self.body[joint]['worldy']}\n   {Fore.BLUE}Z:{self.body[joint]['worldz']}")
-                    #self.pandaPose2[link]['PROX'][joint] = math.sqrt((self.pandaPose2[link]['POS'].x+self.body[joint]['worldx'])**2+(self.pandaPose2[link]['POS'].y+self.body[joint]['worldy'])**2+(self.pandaPose2[link]['POS'].z+self.body[joint]['worldz'])**2)
-            #print(f"{Fore.LIGHTCYAN_EX}Pos 1: {self.pandaPose1[link]['POS']}{type(self.pandaPose1[link]['PROX']['head'])}\nPos 2: {self.pandaPose2[link]['POS']}")
-            #print(f"{Fore.RED}{link}\n{Fore.LIGHTGREEN_EX}Prox 1: {self.pandaPose1[link]['PROX']}\Prox 2: {self.pandaPose2[link]['PROX']}")
-        """
-        self.trans = self.GetTrans('head_default/rs', 'panda_1/panda_EE').translation
-        self.proximity = math.sqrt((self.trans.x)**2+(self.trans.y)**2+(self.trans.z)**2)
-        if self.proximity <= 1 > 0.25:
-            oldrange = 1-0
-            newrange = 0-1 #0-100
-            ni = -(self.proximity*newrange)/oldrange
-        elif self.proximity <= 0.3:
-            ni = 0
-        else: 
-            ni = 1
-        
-        print(f"{Fore.LIGHTCYAN_EX}Proximity: {self.proximity} | NI: {ni}")
+        childFrame = 'head_default/rs'
+        parentFrame = 'panda_1/panda_EE' 
+        try:
+            self.trans = self.GetTrans(childFrame, parentFrame).translation
+        except:
+            print(f"{Fore.YELLOW}Frame {parentFrame} or {childFrame} doesn't exist!")
+        else:
+            self.proximity = math.sqrt((self.trans.x)**2+(self.trans.y)**2+(self.trans.z)**2)
+            if self.proximity <= 1 > 0.25:
+                oldrange = 1-0
+                newrange = 0-1 #0-100
+                ni = -(self.proximity*newrange)/oldrange
+            elif self.proximity <= 0.3:
+                ni = 0
+            else: 
+                ni = 1
+            
+            print(f"{Fore.LIGHTCYAN_EX}Proximity: {self.proximity} | NI: {ni}")
 
-        self.pub_NI.publish(ni)
-        #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
+            self.pub_NI.publish(ni)
+            #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
                 
 
     
@@ -1117,126 +988,6 @@ class SingleImageAlphaPose():
             self.SendTransform2tf(p=[marker.pose.position.x, marker.pose.position.y, marker.pose.position.z], parent_frame='world', child_frame=('marker/'+str(key)))
         self.pub_MARKER.publish(markerarray)
 
-    def proxPub(self, panda_name:str, prox_dict:dict):
-
-        proxmsg = PandaProx()
-        proxmsg.panda_name.data = panda_name
-        
-        proxmsg.joint_0.position.x = prox_dict[5]['POS'].x
-        proxmsg.joint_0.position.y = prox_dict[5]['POS'].y
-        proxmsg.joint_0.position.z = prox_dict[5]['POS'].z
-        proxmsg.joint_0.proximity.head.dist = prox_dict[5]['PROX']['head']
-        proxmsg.joint_0.proximity.L_shoulder.dist = prox_dict[5]['PROX']['L_shoulder']
-        proxmsg.joint_0.proximity.R_shoulder.dist = prox_dict[5]['PROX']['R_shoulder']
-        proxmsg.joint_0.proximity.head.dist = prox_dict[5]['PROX']['head']
-        proxmsg.joint_0.proximity.L_elbow.dist = prox_dict[5]['PROX']['L_elbow']
-        proxmsg.joint_0.proximity.R_elbow.dist = prox_dict[5]['PROX']['R_elbow']
-        proxmsg.joint_0.proximity.L_wrist.dist = prox_dict[5]['PROX']['L_wrist']
-        proxmsg.joint_0.proximity.R_wrist.dist = prox_dict[5]['PROX']['R_wrist']
-
-        proxmsg.joint_1.position.x = prox_dict[1]['POS'].x
-        proxmsg.joint_1.position.y = prox_dict[1]['POS'].y
-        proxmsg.joint_1.position.z = prox_dict[1]['POS'].z
-        proxmsg.joint_1.proximity.head.dist = prox_dict[1]['PROX']['head']
-        proxmsg.joint_1.proximity.L_shoulder.dist = prox_dict[1]['PROX']['L_shoulder']
-        proxmsg.joint_1.proximity.R_shoulder.dist = prox_dict[1]['PROX']['R_shoulder']
-        proxmsg.joint_1.proximity.head.dist = prox_dict[1]['PROX']['head']
-        proxmsg.joint_1.proximity.L_elbow.dist = prox_dict[1]['PROX']['L_elbow']
-        proxmsg.joint_1.proximity.R_elbow.dist = prox_dict[1]['PROX']['R_elbow']
-        proxmsg.joint_1.proximity.L_wrist.dist = prox_dict[1]['PROX']['L_wrist']
-        proxmsg.joint_1.proximity.R_wrist.dist = prox_dict[1]['PROX']['R_wrist']
-
-        proxmsg.joint_2.position.x = prox_dict[2]['POS'].x
-        proxmsg.joint_2.position.y = prox_dict[2]['POS'].y
-        proxmsg.joint_2.position.z = prox_dict[2]['POS'].z
-        proxmsg.joint_2.proximity.head.dist = prox_dict[2]['PROX']['head']
-        proxmsg.joint_2.proximity.L_shoulder.dist = prox_dict[2]['PROX']['L_shoulder']
-        proxmsg.joint_2.proximity.R_shoulder.dist = prox_dict[2]['PROX']['R_shoulder']
-        proxmsg.joint_2.proximity.head.dist = prox_dict[2]['PROX']['head']
-        proxmsg.joint_2.proximity.L_elbow.dist = prox_dict[2]['PROX']['L_elbow']
-        proxmsg.joint_2.proximity.R_elbow.dist = prox_dict[2]['PROX']['R_elbow']
-        proxmsg.joint_2.proximity.L_wrist.dist = prox_dict[2]['PROX']['L_wrist']
-        proxmsg.joint_2.proximity.R_wrist.dist = prox_dict[2]['PROX']['R_wrist']
-
-        proxmsg.joint_3.position.x = prox_dict[3]['POS'].x
-        proxmsg.joint_3.position.y = prox_dict[3]['POS'].y
-        proxmsg.joint_3.position.z = prox_dict[3]['POS'].z
-        proxmsg.joint_3.proximity.head.dist = prox_dict[3]['PROX']['head']
-        proxmsg.joint_3.proximity.L_shoulder.dist = prox_dict[3]['PROX']['L_shoulder']
-        proxmsg.joint_3.proximity.R_shoulder.dist = prox_dict[3]['PROX']['R_shoulder']
-        proxmsg.joint_3.proximity.head.dist = prox_dict[3]['PROX']['head']
-        proxmsg.joint_3.proximity.L_elbow.dist = prox_dict[3]['PROX']['L_elbow']
-        proxmsg.joint_3.proximity.R_elbow.dist = prox_dict[3]['PROX']['R_elbow']
-        proxmsg.joint_3.proximity.L_wrist.dist = prox_dict[3]['PROX']['L_wrist']
-        proxmsg.joint_3.proximity.R_wrist.dist = prox_dict[3]['PROX']['R_wrist']
-
-        proxmsg.joint_4.position.x = prox_dict[4]['POS'].x
-        proxmsg.joint_4.position.y = prox_dict[4]['POS'].y
-        proxmsg.joint_4.position.z = prox_dict[4]['POS'].z
-        proxmsg.joint_4.proximity.head.dist = prox_dict[4]['PROX']['head']
-        proxmsg.joint_4.proximity.L_shoulder.dist = prox_dict[4]['PROX']['L_shoulder']
-        proxmsg.joint_4.proximity.R_shoulder.dist = prox_dict[4]['PROX']['R_shoulder']
-        proxmsg.joint_4.proximity.head.dist = prox_dict[4]['PROX']['head']
-        proxmsg.joint_4.proximity.L_elbow.dist = prox_dict[4]['PROX']['L_elbow']
-        proxmsg.joint_4.proximity.R_elbow.dist = prox_dict[4]['PROX']['R_elbow']
-        proxmsg.joint_4.proximity.L_wrist.dist = prox_dict[4]['PROX']['L_wrist']
-        proxmsg.joint_4.proximity.R_wrist.dist = prox_dict[4]['PROX']['R_wrist']
-
-        proxmsg.joint_5.position.x = prox_dict[5]['POS'].x
-        proxmsg.joint_5.position.y = prox_dict[5]['POS'].y
-        proxmsg.joint_5.position.z = prox_dict[5]['POS'].z
-        proxmsg.joint_5.proximity.head.dist = prox_dict[5]['PROX']['head']
-        proxmsg.joint_5.proximity.L_shoulder.dist = prox_dict[5]['PROX']['L_shoulder']
-        proxmsg.joint_5.proximity.R_shoulder.dist = prox_dict[5]['PROX']['R_shoulder']
-        proxmsg.joint_5.proximity.head.dist = prox_dict[5]['PROX']['head']
-        proxmsg.joint_5.proximity.L_elbow.dist = prox_dict[5]['PROX']['L_elbow']
-        proxmsg.joint_5.proximity.R_elbow.dist = prox_dict[5]['PROX']['R_elbow']
-        proxmsg.joint_5.proximity.L_wrist.dist = prox_dict[5]['PROX']['L_wrist']
-        proxmsg.joint_5.proximity.R_wrist.dist = prox_dict[5]['PROX']['R_wrist']
-
-        proxmsg.joint_6.position.x = prox_dict[6]['POS'].x
-        proxmsg.joint_6.position.y = prox_dict[6]['POS'].y
-        proxmsg.joint_6.position.z = prox_dict[6]['POS'].z
-        proxmsg.joint_6.proximity.head.dist = prox_dict[6]['PROX']['head']
-        proxmsg.joint_6.proximity.L_shoulder.dist = prox_dict[6]['PROX']['L_shoulder']
-        proxmsg.joint_6.proximity.R_shoulder.dist = prox_dict[6]['PROX']['R_shoulder']
-        proxmsg.joint_6.proximity.head.dist = prox_dict[6]['PROX']['head']
-        proxmsg.joint_6.proximity.L_elbow.dist = prox_dict[6]['PROX']['L_elbow']
-        proxmsg.joint_6.proximity.R_elbow.dist = prox_dict[6]['PROX']['R_elbow']
-        proxmsg.joint_6.proximity.L_wrist.dist = prox_dict[6]['PROX']['L_wrist']
-        proxmsg.joint_6.proximity.R_wrist.dist = prox_dict[6]['PROX']['R_wrist']
-
-        proxmsg.joint_7.position.x = prox_dict[7]['POS'].x
-        proxmsg.joint_7.position.y = prox_dict[7]['POS'].y
-        proxmsg.joint_7.position.z = prox_dict[7]['POS'].z
-        proxmsg.joint_7.proximity.head.dist = prox_dict[7]['PROX']['head']
-        proxmsg.joint_7.proximity.L_shoulder.dist = prox_dict[7]['PROX']['L_shoulder']
-        proxmsg.joint_7.proximity.R_shoulder.dist = prox_dict[7]['PROX']['R_shoulder']
-        proxmsg.joint_7.proximity.head.dist = prox_dict[7]['PROX']['head']
-        proxmsg.joint_7.proximity.L_elbow.dist = prox_dict[7]['PROX']['L_elbow']
-        proxmsg.joint_7.proximity.R_elbow.dist = prox_dict[7]['PROX']['R_elbow']
-        proxmsg.joint_7.proximity.L_wrist.dist = prox_dict[7]['PROX']['L_wrist']
-        proxmsg.joint_7.proximity.R_wrist.dist = prox_dict[7]['PROX']['R_wrist']
-        
-        proxmsg.joint_8.position.x = prox_dict[8]['POS'].x
-        proxmsg.joint_8.position.y = prox_dict[8]['POS'].y
-        proxmsg.joint_8.position.z = prox_dict[8]['POS'].z
-        proxmsg.joint_8.proximity.head.dist = prox_dict[8]['PROX']['head']
-        proxmsg.joint_8.proximity.L_shoulder.dist = prox_dict[8]['PROX']['L_shoulder']
-        proxmsg.joint_8.proximity.R_shoulder.dist = prox_dict[8]['PROX']['R_shoulder']
-        proxmsg.joint_8.proximity.head.dist = prox_dict[8]['PROX']['head']
-        proxmsg.joint_8.proximity.L_elbow.dist = prox_dict[8]['PROX']['L_elbow']
-        proxmsg.joint_8.proximity.R_elbow.dist = prox_dict[8]['PROX']['R_elbow']
-        proxmsg.joint_8.proximity.L_wrist.dist = prox_dict[8]['PROX']['L_wrist']
-        proxmsg.joint_8.proximity.R_wrist.dist = prox_dict[8]['PROX']['R_wrist']
-
-        if panda_name == 'Panda_1':
-            self.pub_PANDA_PROX_1.publish(proxmsg)
-        elif panda_name == 'Panda_2':
-            self.pub_PANDA_PROX_2.publish(proxmsg)
-        else:
-            print(f"{Fore.RED}INVALID NAME")
-       
     def camInfo(self, camera_topic:str):
         """
         This function pulls camera parameters from the "/camera_info" topic
