@@ -247,7 +247,6 @@ class SmokeDetectorDetector():
 
 
     def getOrientationCorr(self, detected:SmokeDetector):
-        graphImage = np.zeros((360,360, 3), dtype=np.uint8)
         margin = 128
         #margin = 255
         smokedetCenter = detected.location
