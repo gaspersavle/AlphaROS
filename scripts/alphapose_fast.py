@@ -374,7 +374,6 @@ class SingleImageAlphaPose():
 ####################################################################################
 
     def pose_CB(self, input):
-        starttime = time.time()
         if self.enablePose and self.camSel:
             self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
             
@@ -382,7 +381,7 @@ class SingleImageAlphaPose():
             self.IMAGE_WIDTH = self.img_POSE.shape[1]
             self.pose = self.process("demo", self.img_POSE)
             self.vis_POSE = self.vis(self.img_POSE, self.pose)
-            if self.pose != None:
+            """if self.pose != None:
                 self.keypoints = self.pose['result'][0]['keypoints']
                 i = 0
                 for key, joint in self.body.items():
@@ -390,11 +389,10 @@ class SingleImageAlphaPose():
                     joint['y'] = int(self.keypoints[16-i][1])
                     i+=1
             else:
-                print(f"{Fore.RED} No pose detected...")
+                print(f"{Fore.RED} No pose detected...") """
                 
             if self.enableCamPose == True and self.colorTopic == '/realsense_top/color/image_raw':
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
-            print(f"{Fore.LIGHTMAGENTA_EX}pose time: {endtime}")
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
 
@@ -404,34 +402,34 @@ class SingleImageAlphaPose():
         if self.enablePose and self.camSel:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
 
-            if self.img_DEPTH.shape[0] != self.IMAGE_HEIGHT:
-                self.img_blur_DEPTH = cv2.resize(self.img_DEPTH, dsize=[self.IMAGE_WIDTH, self.IMAGE_HEIGHT])
+            """  if self.img_DEPTH.shape[1] != self.IMAGE_HEIGHT:
+                self.img_blur_DEPTH = cv3.resize(self.img_DEPTH, dsize=[self.IMAGE_WIDTH, self.IMAGE_HEIGHT])
                 self.highRes = True
             else:
-                self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
+                self.img_blur_DEPTH = cv3.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
                 self.highRes = False
 
             if self.camPose != None and self.camSel == True:
-                self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
+                self.SendTransform3tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
                 
             if self.pose != None:
 
                 for key, joint in self.body.items():
 
                     if joint['y'] >= self.IMAGE_HEIGHT:
-                        joint['z'] = self.img_blur_DEPTH[self.IMAGE_HEIGHT-1, int(joint['x'])]/1000
+                        joint['z'] = self.img_blur_DEPTH[self.IMAGE_HEIGHT0, int(joint['x'])]/1000
 
                     elif joint['x'] >= self.IMAGE_WIDTH:
-                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), self.IMAGE_WIDTH-1]/1000
+                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), self.IMAGE_WIDTH0]/1000
 
                     else:
-                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
+                        joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1001
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
                 self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
-                self.rounddepth_L = str(self.body['L_wrist']['z'])[:4]
-                self.rounddepth_R = str(self.body['L_wrist']['z'])[:4]
+                self.rounddepth_L = str(self.body['L_wrist']['z'])[:5]
+                self.rounddepth_R = str(self.body['L_wrist']['z'])[:5]
 
                 print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
                 
@@ -441,11 +439,11 @@ class SingleImageAlphaPose():
 
                     if joint['cf'] != None:
                         childFrame = (joint['cf']+'/rs')
-                        self.SendTransform2tf(p=jointxyz, parent_frame=self.tfFrame, child_frame=childFrame)
+                        self.SendTransform3tf(p=jointxyz, parent_frame=self.tfFrame, child_frame=childFrame)
                         try:
                             transToWorld = self.GetTrans('world',str(childFrame))
-                        except tf2_ros.ConnectivityException:
-                            if self.tfFrame == 'panda_2/realsense':
+                        except tf3_ros.ConnectivityException:
+                            if self.tfFrame == 'panda_3/realsense':
                                 print(f"{Fore.CYAN}Transformation from the {childFrame} to the 'world' frame doesn't exist, check if the controller is running")
                             else:
                                 print(f"{Fore.LIGHTCYAN_EX}Transformation from the {childFrame} to the 'workd' frame doesn't exist, check if PNP calculation is valid")
@@ -458,19 +456,19 @@ class SingleImageAlphaPose():
 
                 if self.args.circles == True:
                     
-                    self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
+                    self.circle_DEPTH = cv3.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                    self.circle_DEPTH = cv3.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                    self.out_DEPTH = CvBridge().cv3_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
 
-            else:
-                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
+            else: """
+            self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
 
             
-            self.pub_DEPTH.publish(self.out_DEPTH)
-            self.markerPub()
-            if self.colorTopic == '/realsense_top/color/image_raw':
-                self.visMarker()
-            self.getProximity()
+            #self.pub_DEPTH.publish(self.out_DEPTH)
+            #$self.markerPub()
+            #if self.colorTopic == '/realsense_top/color/image_raw':
+            #    self.visMarker()
+            #self.getProximity()
             
             
 
@@ -1089,10 +1087,10 @@ class SingleImageAlphaPose():
         """
         
         #x = (u - (496.91)) / 635.7753
-        x = (u - (self.cx)) / self.fx
+        x = (u - (325.205)) / 602.174
 
         #y = (v - (489.182)) / 355.61024
-        y = (v - (self.cy)) / self.fy
+        y = (v - (600.782)) / 246.279 
 
         X = (z * x)
         Y = (z * y)
