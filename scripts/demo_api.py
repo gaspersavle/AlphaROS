@@ -28,7 +28,6 @@ import tf2_ros
 import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool, String, Float32
-from proxmsg.msg import PandaProx
 from std_srvs.srv import SetBool 
 from sensor_msgs.msg import Image, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
@@ -610,7 +609,6 @@ class SingleImageAlphaPose():
         self.transmsg = geometry_msgs.msg.TransformStamped()
         self.tfbuffer = tf2_ros.Buffer()
         self.tflistener = tf2_ros.TransformListener(self.tfbuffer)
-        self.camInfo('/realsense_top/color')
         
         self.maxDEPTH = rospy.get_param("/realsense_top/aligned_depth_to_color/image_raw/compressedDepth/depth_max") # Za kasnejse mapiranje globine
         while True:

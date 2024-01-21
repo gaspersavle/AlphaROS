@@ -1,5 +1,5 @@
 # GENERATED VERSION FILE
-# TIME: Mon Mar 13 10:16:13 2023
+# TIME: Sun Jan 21 16:30:39 2024
 
-__version__ = '0.5.0+'
+__version__ = '0.5.0+03f8a48'
 short_version = '0.5.0'
