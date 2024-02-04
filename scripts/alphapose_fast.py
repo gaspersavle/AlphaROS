@@ -29,7 +29,7 @@ import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool, String, Float32
 from std_srvs.srv import SetBool 
-from sensor_msgs.msg import Image, CameraInfo
+from sensor_msgs.msg import Image, CompressedImage, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
 from cv_bridge import CvBridge   
 import colorama
@@ -375,7 +375,7 @@ class SingleImageAlphaPose():
     def pose_CB(self, input):
         starttime = time.time()
         if self.enablePose and self.camSel:
-            self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
+            self.img_POSE = CvBridge().compressed_imgmsg_to_cv2(input, desired_encoding='rgb8')
             
             self.IMAGE_HEIGHT = self.img_POSE.shape[0]
             self.IMAGE_WIDTH = self.img_POSE.shape[1]
@@ -570,7 +570,7 @@ class SingleImageAlphaPose():
             if self.colorTopic != None:
                 break
         
-        self.sub_POSE = rospy.Subscriber(self.colorTopic, Image, self.pose_CB)
+        self.sub_POSE = rospy.Subscriber(self.colorTopic, CompressedImage, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
 
         self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
@@ -1284,7 +1284,7 @@ class SingleImageAlphaPose():
             panda = req.data
             if panda:
                 print("Camera: realsense (Panda 2) selected...")
-                self.colorTopic = '/realsense/color/image_raw'
+                self.colorTopic = '/realsense/color/image_raw/compressed'
                 self.depthTopic = '/realsense/aligned_depth_to_color/image_raw'
                 self.tfFrame = 'panda_2/realsense'
                 msg = self.camSelectPanda + " Camera location: Panda 2"
