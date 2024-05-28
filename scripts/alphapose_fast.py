@@ -29,7 +29,7 @@ import tf2_geometry_msgs
 import geometry_msgs.msg
 from std_msgs.msg import Bool, String, Float32
 from std_srvs.srv import SetBool 
-from sensor_msgs.msg import Image, CompressedImage, CameraInfo
+from sensor_msgs.msg import Image, CameraInfo
 from visualization_msgs.msg import MarkerArray, Marker
 from cv_bridge import CvBridge   
 import colorama
@@ -47,9 +47,9 @@ from alphapose.utils.vis import getTime
 
 """----------------------------- Demo options -----------------------------"""
 parser = argparse.ArgumentParser(description='AlphaPose Single-Image Demo')
-parser.add_argument('--cfg', type=str, required=True,
+parser.add_argument('--cfg', type=str, default='configs/coco/resnet/256x192_res50_lr1e-3_1x.yaml', required=True,
                     help='experiment configure file name')
-parser.add_argument('--checkpoint', type=str, required=True,
+parser.add_argument('--checkpoint', type=str, default='pretrained_models/fast_res50_256x192.pth', required=True,
                     help='checkpoint file name')
 parser.add_argument('--detector', dest='detector',
                     help='detector name', default="yolo")
@@ -325,6 +325,7 @@ class SingleImageAlphaPose():
     def __init__(self, args, cfg):
         self.IMAGE_HEIGHT = None
         self.IMAGE_WIDTH = None
+        self.PUB_THRESHOLD = 0.5
         self.highRes = None
         self.args = args
         self.cfg = cfg
@@ -341,6 +342,10 @@ class SingleImageAlphaPose():
         self.poseNode = '/realsense/alphapose/enable'
         self.camPoseNode = '/realsense_top/get_pose'
         self.camSelectPanda = '/realsense/alphapose/selectPanda'
+        self.cx = None
+        self.cy = None
+        self.fx = None
+        self.fy = None
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
         rospy.Service(self.camPoseNode, SetBool, self.enableCamPose_CB)
         rospy.Service(self.camSelectPanda, SetBool, self.selectPandaCB)
@@ -375,7 +380,7 @@ class SingleImageAlphaPose():
     def pose_CB(self, input):
         starttime = time.time()
         if self.enablePose and self.camSel:
-            self.img_POSE = CvBridge().compressed_imgmsg_to_cv2(input, desired_encoding='bgr8')
+            self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
             
             self.IMAGE_HEIGHT = self.img_POSE.shape[0]
             self.IMAGE_WIDTH = self.img_POSE.shape[1]
@@ -385,9 +390,37 @@ class SingleImageAlphaPose():
 
             if self.pose != None:
                 self.keypoints = self.pose['result'][0]['keypoints']
+                self.scores = self.pose['result'][0]['kp_score']
+                #print(f"{Fore.LIGHTBLUE_EX}Scores: {self.scores}")
+                #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
+                jIgnore = ['waist', 'torso', 'body']
+                tagIgnore = ['roll', 'pitch', 'yaw']
+                i = 0
+                for key, joint in self.body.items():
+                    keySegs = key.split('_')
+                    
+                    #print(ending)
+                    if keySegs[0] not in jIgnore:
+                        #print(f"{Fore.LIGHTGREEN_EX}Combos: {key}\n{Fore.BLACK}{self.keypoints[16-i]}")
+                        if keySegs[-1] not in tagIgnore and key != 'head':
+                            joint['x'] = int(self.keypoints[16-i][0])
+                            joint['y'] = int(self.keypoints[16-i][1])
+                            joint['score'] = self.scores[16-i]
+                            i+=1
+                            #print(f"{Fore.GREEN}Key: {key}\n index: {16-i}\nValues: x={joint['x']} | y={joint['y']} | sc={joint['score']}")
+                        elif key == 'head':
+                            joint['x'] = int(self.keypoints[0][0])
+                            joint['y'] = int(self.keypoints[0][1])
+                            joint['score'] = self.scores[0]
+                            i+=1
+                            #print(f"{Fore.RED}Key: {key}\n index: {16-i}\nValues: x={joint['x']} | y={joint['y']} | sc={joint['score']}")
+                    
+
                 if self.args.circles == True:
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
+                
+                #print(f"{Fore.GREEN}{self.vis_POSE}")
             else:
                 print(f"{Fore.RED} No pose detected...")
                 
@@ -398,7 +431,7 @@ class SingleImageAlphaPose():
             #self.pub_POSE.publish(self.out_POSE)a
             endtime = starttime-time.time()
             print(f"{Fore.LIGHTMAGENTA_EX}pose time: {endtime}")
-            self.out_POSE = CvBridge().cv2_to_compressed_imgmsg(self.vis_POSE)
+            self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
 
             
@@ -426,19 +459,36 @@ class SingleImageAlphaPose():
             if self.pose != None:
                 for key, joint in self.body.items():
                     #print(key)
-                    if joint['y'] != None and joint['y'] >= self.IMAGE_HEIGHT:
+                    #print(f'{Fore.LIGHTMAGENTA_EX}Joint: {joint}')
+                    if joint['y'] >= self.IMAGE_HEIGHT:
                         joint['z'] = self.img_blur_DEPTH[self.IMAGE_HEIGHT-1, int(joint['x'])]/1000
                         #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
-                    elif joint['x'] != None and joint['x'] >= self.IMAGE_WIDTH:
+                    elif joint['x'] >= self.IMAGE_WIDTH:
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), self.IMAGE_WIDTH-1]/1000
                     else:
-                        print(f"{Fore.BLUE}Joint: {joint}")
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
+                        #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
+                    #print('Joint z: ', joint['z'])
+                    
+                    
+                    joint['qx'] = np.roll(joint['qx'], -1)
+                    np.put(joint['qx'], 4, joint['x'])
+                    
+                            
+                    joint['qy'] = np.roll(joint['qy'], -1)
+                    np.put(joint['qy'], 4, joint['y'])
+                    
+                            
+                    joint['qz'] = np.roll(joint['qz'], -1)
+                    np.put(joint['qz'], 4, joint['z'])
+                    
+
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
 
                 self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
+
 
                 self.rounddepth_L = str(self.body['L_wrist']['z'])[:4]
                 self.rounddepth_R = str(self.body['L_wrist']['z'])[:4]
@@ -456,7 +506,7 @@ class SingleImageAlphaPose():
 
                     
 
-                    if joint['cf'] != None:
+                    if joint['cf'] != None and joint['score'] > self.PUB_THRESHOLD:
                         self.SendTransform2tf(p=jointxyz, parent_frame=self.tfFrame, child_frame=(joint['cf']+'/rs'))
                         childFrame = (joint['cf']+'/rs')
                         try:
@@ -477,15 +527,9 @@ class SingleImageAlphaPose():
                     
                     self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
-
-            else:
-                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
-
             
             stoptime = time.time() 
             print(f"{Fore.LIGHTBLUE_EX}pose time: {stoptime}")
-            self.pub_DEPTH.publish(self.out_DEPTH)
             self.markerPub()
             if self.colorTopic == '/realsense_top/color/image_raw':
                 self.visMarker()
@@ -554,10 +598,10 @@ class SingleImageAlphaPose():
             if self.colorTopic != None:
                 break
         
-        self.sub_POSE = rospy.Subscriber(self.colorTopic, CompressedImage, self.pose_CB)
+        self.sub_POSE = rospy.Subscriber(self.colorTopic, Image, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
 
-        self.pub_POSE = rospy.Publisher("/alphapose/image_raw/compressed", CompressedImage, queue_size=10)
+        self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
         self.pub_NI = rospy.Publisher("/panda_1/dmp_speed", Float32, queue_size= 1)
@@ -628,43 +672,56 @@ class SingleImageAlphaPose():
         }
 
         self.body ={'R_ankle': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'r_ankle', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'r_ankle_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'L_ankle': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'l_ankle', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'l_ankle_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'R_knee': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'r_knee', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'r_knee_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
-                    'L_knee': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'l_knee', 'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_knee': {'x': None, 'y': None, 'z': None,
+                        'cf': 'l_knee_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5), 
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'R_hip': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'r_hip', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'r_hip_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
-                    'L_hip': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'l_hip', 'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_hip': {'x': None, 'y': None, 'z': None,
+                        'cf': 'l_hip_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'R_wrist': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'r_wrist', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'r_wrist_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'L_wrist': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'l_wrist', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'l_wrist_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
-                    'R_elbow': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'r_elbow', 'worldx': None, 'worldy': None, 'worldz': None},
+                    'R_elbow': {'x': None, 'y': None, 'z': None,
+                        'cf': 'r_elbow_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
-                    'L_elbow': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'l_elbow', 'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_elbow': {'x': None, 'y': None, 'z': None,
+                        'cf': 'l_elbow_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'R_shoulder': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'r_shoulder', 'worldx': None, 'worldy': None, 'worldz': None},
+                        'cf': 'r_shoulder_default','qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
-                    'L_shoulder': {'x': None, 'y': None, 'z': None, 
-                        'cf': 'l_shoulder', 'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_shoulder': {'x': None, 'y': None, 'z': None,
+                        'cf': 'l_shoulder_default', 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None},
 
                     'head': {'x': None, 'y': None, 'z': None, 'cf': 'head_default',
-                        'worldx': None, 'worldy': None, 'worldz': None}}
+                        'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                        'worldx': None, 'worldy': None, 'worldz': None, 'score' : None}}
 
     def markerHandler(self, image:np.ndarray):
         """
@@ -846,21 +903,11 @@ class SingleImageAlphaPose():
         self.camera_fy = caminfo.K[4]
         self.camera_cy = caminfo.K[5]
 
-        self.cameramatrix = np.array([[self.camera_fx, 0.0, self.camera_cx],
+        self.camMat = np.array([[self.camera_fx, 0.0, self.camera_cx],
                                     [0.0, self.camera_fy, self.camera_cy],
                                     [0.0, 0.0, 1.0]],dtype=np.float32)
+        print(f"{Fore.CYAN}Camera info: {self.camMat}")
         
-        self.camMatLowRes = np.array([[625.11944,0.0, 322.41944],
-                            [0.0, 623.68514, 243.40506],
-                            [0.0,0.0,1.0]], dtype=np.float32)
-        
-        self.camMatHighRes = np.array([[909.4385,0.0,  641.420126],
-                            [0.0, 909.540780, 357.579186],
-                            [0.0,0.0,1.0]], dtype=np.float32)
-        
-        self.camMat = np.array([[865.717580, 0.00000, 646.303204],
-                            [0.0, 865.878228, 362.008238],
-                            [0.0,0.0,1.0]], dtype=np.float32)
         self.fx = self.camMat[0, 0]
         self.cx = self.camMat[0, 2]
         self.fy = self.camMat[1, 1]
@@ -1049,68 +1096,6 @@ class SingleImageAlphaPose():
         return np.mean(axis)
 
 
-    def getRot(self, joint:str) -> np.ndarray:
-        """
-        This function calculates joint angles for the URDF human model from
-        the calculated/measured locations of hte keypoints
-
-        Args
-        ----
-            joint(str) : Specifies for which joint the angle is being calculated
-
-        Returns
-        -------
-            outRot(np,ndarray) : Rotation matrix of the specified joint
-        """
-        curJoint = self.body[joint]
-        
-        if curJoint['lower_j'] != None:
-            lowJoint = self.body[curJoint['lower_j']]
-            #print(f"{Fore.MAGENTA}{joint} | Z: {curJoint['worldz']}")
-            #print(f"{Fore.LIGHTMAGENTA_EX}{curJoint['lower_j']} | Z: {lowJoint['worldz']}")
-            
-            """ curPos = [curJoint['x'], curJoint['y'], curJoint['z']]
-            lowPos = [lowJoint['x'], lowJoint['y'], lowJoint['z']]
-
-            curPos = [self.GetMoveAvg(curJoint['qx']), self.GetMoveAvg(curJoint['qy']), self.GetMoveAvg(curJoint['qz'])]
-            lowPos = [self.GetMoveAvg(lowJoint['qx']), self.GetMoveAvg(lowJoint['qy']), self.GetMoveAvg(lowJoint['qz'])] """
-
-            curPos = [curJoint['worldx'], curJoint['worldy'], curJoint['worldz']]
-            lowPos = [lowJoint['worldx'], lowJoint['worldy'], lowJoint['worldz']]
-            
-
-            if curJoint['rot_x']:
-                dx = curPos[0] - lowPos[0]
-                dy = curPos[1] - lowPos[1]
-                rot = math.atan(dx/dy)
-                if curJoint['neg']:
-                    rot = -rot
-                outRot = r2q(rot_x(rot))
-            
-            elif curJoint['rot_y']:
-                #print('Cur: ', curPos)
-                #print('Low: ', lowPos)
-                dz = curPos[2] - lowPos[2]
-                dy = curPos[1] - lowPos[1]
-                rot = math.atan(dz/dy)
-                if curJoint['neg']:
-                    rot = -rot
-                outRot = r2q(rot_y(rot))
-            
-            elif curJoint['rot_z']:
-                dx = curPos[0] - lowPos[0]
-                dz = curPos[2] - lowPos[2]
-                rot = math.atan(dx/dz)
-                if curJoint['neg']:
-                    rot = -rot
-                outRot = r2q(rot_z(rot))
-            else:
-                outRot = r2q(np.eye(3))
-        else:
-            outRot = r2q(np.eye(3))
-
-        return outRot
-
     def uv_to_XY(self, u:int,v:int, z:int) -> list:
         """
         Convert pixel coordinated (u,v) from realsense camera
@@ -1129,11 +1114,11 @@ class SingleImageAlphaPose():
             worldPos(list) : Real world position (in respect to camera)
         """
         
-        x = (u - (325.205)) / 602.174
-        #x = (u - (self.cx)) / self.fx
+        #x = (u - (496.91)) / 635.7753
+        x = (u - (self.cx)) / self.fx
 
-        y = (v - (600.782)) / 246.279
-        #y = (v - (self.cy)) / self.fy
+        #y = (v - (489.182)) / 355.61024
+        y = (v - (self.cy)) / self.fy
 
         X = (z * x)
         Y = (z * y)
@@ -1171,18 +1156,21 @@ class SingleImageAlphaPose():
             panda = req.data
             if panda:
                 print("Camera: realsense (Panda 2) selected...")
-                self.colorTopic = '/realsense/color/image_raw/compressed'
+                self.colorTopic = '/realsense/color/image_raw'
                 self.depthTopic = '/realsense/aligned_depth_to_color/image_raw'
                 self.tfFrame = 'panda_2/realsense'
                 msg = self.camSelectPanda + " Camera location: Panda 2"
+                infotopic = '/realsense/color/'
             else:
                 print("Camera: realsense_top (DEFAULT) selected...")
                 self.colorTopic = '/realsense_top/color/image_raw'
                 self.depthTopic = '/realsense_top/aligned_depth_to_color/image_raw'
                 self.tfFrame = 'rs_top'
                 msg = self.camSelectPanda + " Camera location: Top"
+                infotopic = '/realsense_top/color'
             self.camSel = True
             self.initRosPy()
+            self.camInfo(infotopic)
             #self.sub_POSE = rospy.Subscriber(self.colorTopic, Image, self.pose_CB)
             #self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
             return True, msg

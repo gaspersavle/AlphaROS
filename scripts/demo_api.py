@@ -47,9 +47,9 @@ from alphapose.utils.vis import getTime
 
 """----------------------------- Demo options -----------------------------"""
 parser = argparse.ArgumentParser(description='AlphaPose Single-Image Demo')
-parser.add_argument('--cfg', type=str, required=True,
+parser.add_argument('--cfg', type=str, default='configs/coco/resnet/256x192_res50_lr1e-3_1x.yaml', required=True,
                     help='experiment configure file name')
-parser.add_argument('--checkpoint', type=str, required=True,
+parser.add_argument('--checkpoint', type=str, default='pretrained_models/fast_res50_256x192.pth', required=True,
                     help='checkpoint file name')
 parser.add_argument('--detector', dest='detector',
                     help='detector name', default="yolo")
@@ -341,6 +341,10 @@ class SingleImageAlphaPose():
         self.poseNode = '/realsense/alphapose/enable'
         self.camPoseNode = '/realsense_top/get_pose'
         self.camSelectPanda = '/realsense/alphapose/selectPanda'
+        self.cx = None
+        self.cy = None
+        self.fx = None
+        self.fy = None
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
         rospy.Service(self.camPoseNode, SetBool, self.enableCamPose_CB)
         rospy.Service(self.camSelectPanda, SetBool, self.selectPandaCB)
@@ -538,15 +542,9 @@ class SingleImageAlphaPose():
                     
                     self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                     self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.circle_DEPTH, encoding = '16UC1')
-
-            else:
-                self.out_DEPTH = CvBridge().cv2_to_imgmsg(self.img_DEPTH, encoding = '16UC1')
-
             
             stoptime = time.time() 
             print(f"{Fore.LIGHTBLUE_EX}pose time: {stoptime}")
-            self.pub_DEPTH.publish(self.out_DEPTH)
             self.markerPub()
             if self.colorTopic == '/realsense_top/color/image_raw':
                 self.visMarker()
@@ -1004,21 +1002,11 @@ class SingleImageAlphaPose():
         self.camera_fy = caminfo.K[4]
         self.camera_cy = caminfo.K[5]
 
-        self.cameramatrix = np.array([[self.camera_fx, 0.0, self.camera_cx],
+        self.camMat = np.array([[self.camera_fx, 0.0, self.camera_cx],
                                     [0.0, self.camera_fy, self.camera_cy],
                                     [0.0, 0.0, 1.0]],dtype=np.float32)
+        print(f"{Fore.CYAN}Camera info: {self.camMat}")
         
-        self.camMatLowRes = np.array([[625.11944,0.0, 322.41944],
-                            [0.0, 623.68514, 243.40506],
-                            [0.0,0.0,1.0]], dtype=np.float32)
-        
-        self.camMatHighRes = np.array([[909.4385,0.0,  641.420126],
-                            [0.0, 909.540780, 357.579186],
-                            [0.0,0.0,1.0]], dtype=np.float32)
-        
-        self.camMat = np.array([[865.717580, 0.00000, 646.303204],
-                            [0.0, 865.878228, 362.008238],
-                            [0.0,0.0,1.0]], dtype=np.float32)
         self.fx = self.camMat[0, 0]
         self.cx = self.camMat[0, 2]
         self.fy = self.camMat[1, 1]
@@ -1333,14 +1321,17 @@ class SingleImageAlphaPose():
                 self.depthTopic = '/realsense/aligned_depth_to_color/image_raw'
                 self.tfFrame = 'panda_2/realsense'
                 msg = self.camSelectPanda + " Camera location: Panda 2"
+                infotopic = '/realsense/color/'
             else:
                 print("Camera: realsense_top (DEFAULT) selected...")
                 self.colorTopic = '/realsense_top/color/image_raw'
                 self.depthTopic = '/realsense_top/aligned_depth_to_color/image_raw'
                 self.tfFrame = 'rs_top'
                 msg = self.camSelectPanda + " Camera location: Top"
+                infotopic = '/realsense_top/color'
             self.camSel = True
             self.initRosPy()
+            self.camInfo(infotopic)
             #self.sub_POSE = rospy.Subscriber(self.colorTopic, Image, self.pose_CB)
             #self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
             return True, msg
