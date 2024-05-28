@@ -375,7 +375,7 @@ class SingleImageAlphaPose():
     def pose_CB(self, input):
         starttime = time.time()
         if self.enablePose and self.camSel:
-            self.img_POSE = CvBridge().compressed_imgmsg_to_cv2(input, desired_encoding='rgb8')
+            self.img_POSE = CvBridge().compressed_imgmsg_to_cv2(input, desired_encoding='bgr8')
             
             self.IMAGE_HEIGHT = self.img_POSE.shape[0]
             self.IMAGE_WIDTH = self.img_POSE.shape[1]
@@ -398,7 +398,7 @@ class SingleImageAlphaPose():
             #self.pub_POSE.publish(self.out_POSE)a
             endtime = starttime-time.time()
             print(f"{Fore.LIGHTMAGENTA_EX}pose time: {endtime}")
-            self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
+            self.out_POSE = CvBridge().cv2_to_compressed_imgmsg(self.vis_POSE)
             self.pub_POSE.publish(self.out_POSE)
 
             
@@ -426,35 +426,19 @@ class SingleImageAlphaPose():
             if self.pose != None:
                 for key, joint in self.body.items():
                     #print(key)
-                    if joint['y'] >= self.IMAGE_HEIGHT:
+                    if joint['y'] != None and joint['y'] >= self.IMAGE_HEIGHT:
                         joint['z'] = self.img_blur_DEPTH[self.IMAGE_HEIGHT-1, int(joint['x'])]/1000
                         #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
-                    elif joint['x'] >= self.IMAGE_WIDTH:
+                    elif joint['x'] != None and joint['x'] >= self.IMAGE_WIDTH:
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), self.IMAGE_WIDTH-1]/1000
                     else:
+                        print(f"{Fore.BLUE}Joint: {joint}")
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
-                        #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
-                    #print('Joint z: ', joint['z'])
-                    
-                    
-                    joint['qx'] = np.roll(joint['qx'], -1)
-                    np.put(joint['qx'], 4, joint['x'])
-                    
-                            
-                    joint['qy'] = np.roll(joint['qy'], -1)
-                    np.put(joint['qy'], 4, joint['y'])
-                    
-                            
-                    joint['qz'] = np.roll(joint['qz'], -1)
-                    np.put(joint['qz'], 4, joint['z'])
-                    
-
 
                 print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
                 print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
 
                 self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
-
 
                 self.rounddepth_L = str(self.body['L_wrist']['z'])[:4]
                 self.rounddepth_R = str(self.body['L_wrist']['z'])[:4]
@@ -573,7 +557,7 @@ class SingleImageAlphaPose():
         self.sub_POSE = rospy.Subscriber(self.colorTopic, CompressedImage, self.pose_CB)
         self.sub_DEPTH = rospy.Subscriber(self.depthTopic, Image, self.depth_CB)
 
-        self.pub_POSE = rospy.Publisher("/alphapose_pose", Image, queue_size=1)
+        self.pub_POSE = rospy.Publisher("/alphapose/image_raw/compressed", CompressedImage, queue_size=10)
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
         self.pub_NI = rospy.Publisher("/panda_1/dmp_speed", Float32, queue_size= 1)
@@ -643,140 +627,43 @@ class SingleImageAlphaPose():
             ]
         }
 
-        self.body ={'R_ankle': {'x': None, 'y': None, 'z': None, 'pf': 'r_knee_default', 
-                        'cf': 'r_ankle_default','rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_knee',
-                        'transj': [0, 0, -0.44], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+        self.body ={'R_ankle': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'r_ankle', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'L_ankle': {'x': None, 'y': None, 'z': None, 'pf': 'l_knee_default', 
-                        'cf': 'l_ankle_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'L_knee',
-                        'transj': [0, 0, -0.44], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_ankle': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'l_ankle', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'R_knee': {'x': None, 'y': None, 'z': None, 'pf': 'r_hip_default',
-                        'cf': 'r_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_ankle', 'parent': 'R_hip', 'neg': False,
-                        'transj': [0, 0, -0.33], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'R_knee': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'r_knee', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'L_knee': {'x': None, 'y': None, 'z': None, 'pf': 'l_hip_default',
-                        'cf': 'l_knee_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_ankle', 'parent': 'L_hip', 'neg': False,
-                        'transj': [0, 0, -0.33], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5), 
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_knee': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'l_knee', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'R_hip_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'waist_default',
-                        'cf': 'r_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'body', 'neg': True,
-                        'transj': [0, -0.132, 0], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'R_hip': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'r_hip', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'R_hip_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'r_y_hip_default',
-                        'cf': 'r_p_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'R_hip_yaw', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_hip': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'l_hip', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'R_hip': {'x': None, 'y': None, 'z': None, 'pf': 'r_p_hip_default',
-                        'cf': 'r_hip_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_knee', 'parent': 'R_hip_pitch', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'R_wrist': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'r_wrist', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'L_hip_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'waist_default',
-                        'cf': 'l_y_hip_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'body', 'neg': True, 
-                        'transj': [0, 0.132, 0], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_wrist': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'l_wrist', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'L_hip_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'l_y_hip_default',
-                        'cf': 'l_p_hip_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'L_hip_yaw', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'R_elbow': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'r_elbow', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'L_hip': {'x': None, 'y': None, 'z': None, 'pf': 'l_p_hip_default',
-                        'cf': 'l_hip_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_knee', 'parent': 'L_hip_pitch', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_elbow': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'l_elbow', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'R_wrist': {'x': None, 'y': None, 'z': None, 'pf': 'r_elbow_default',
-                        'cf': 'r_wrist_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'R_elbow', 
-                        'transj': [0, 0, -0.22], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'R_shoulder': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'r_shoulder', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'L_wrist': {'x': None, 'y': None, 'z': None, 'pf': 'l_elbow_default',
-                        'cf': 'l_wrist_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'L_elbow', 
-                        'transj': [0, 0, -0.22], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
+                    'L_shoulder': {'x': None, 'y': None, 'z': None, 
+                        'cf': 'l_shoulder', 'worldx': None, 'worldy': None, 'worldz': None},
 
-                    'R_elbow': {'x': None, 'y': None, 'z': None, 'pf': 'r_shoulder_default',
-                        'cf': 'r_elbow_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_wrist', 'parent': 'R_shoulder', 'neg': False, 
-                        'transj': [0, 0, -0.352], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'L_elbow': {'x': None, 'y': None, 'z': None, 'pf': 'l_shoulder_default',
-                        'cf': 'l_elbow_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_wrist', 'parent': 'L_shoulder', 'neg': False, 
-                        'transj': [0, 0, -0.352], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'R_shoulder_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default',
-                        'cf': 'r_y_shoulder_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'torso', 'neg': False, 
-                        'transj' : [0, -0.176, 0], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'R_shoulder_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'r_y_shoulder_default',
-                        'cf': 'r_p_shoulder_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_yaw', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'R_shoulder': {'x': None, 'y': None, 'z': None, 'pf': 'r_p_shoulder_default',
-                        'cf': 'r_shoulder_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'R_elbow', 'parent': 'R_shoulder_pitch', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'L_shoulder_yaw': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default',
-                        'cf': 'l_y_shoulder_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'torso', 'neg': True, 
-                        'transj' : [0, 0.176, 0], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'L_shoulder_pitch': {'x': None, 'y': None, 'z': None, 'pf': 'l_y_shoulder_default',
-                        'cf': 'l_p_shoulder_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_yaw', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'L_shoulder': {'x': None, 'y': None, 'z': None, 'pf': 'l_p_shoulder_default',
-                        'cf': 'l_shoulder_default', 'rot_x': True, 'rot_y': False, 'rot_z': False, 'lower_j': 'L_elbow', 'parent': 'L_shoulder_pitch', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'R_ear': {'x': None, 'y': None, 'z': None, 'cf': None,
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'L_ear': {'x': None, 'y': None, 'z': None, 'cf': None,
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'R_eye': {'x': None, 'y': None, 'z': None, 'cf': None,
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'L_eye': {'x': None, 'y': None, 'z': None, 'cf': None,
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'head': {'x': None, 'y': None, 'z': None, 'pf': 'torso_default', 'cf': 'head_default',
-                        'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'torso', 
-                        'transj' : [0.055, 0, 0.11], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'body': {'x': None, 'y': None, 'z': None,
-                        'pf': 'world', 'cf': 'body_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 
-                        'transj' : None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-
-                    'torso': {'x': None, 'y': None,
-                        'z': None, 'pf': 'waist_default', 'cf': 'torso_default', 'rot_x': False, 'rot_y': False, 'rot_z': False, 'lower_j': None, 'parent': 'waist', 'neg': True, 
-                        'transj': [0, 0, 0.605], 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
-                        'worldx': None, 'worldy': None, 'worldz': None},
-                    
-                    'waist': {'x': None, 'y': None,'z': None, 'pf': 'body_default', 
-                        'cf': 'waist_default', 'rot_x': False, 'rot_y': True, 'rot_z': False, 'lower_j': 'torso', 'parent': 'body', 'neg': False, 
-                        'transj': None, 'qx': np.ndarray(5), 'qy': np.ndarray(5), 'qz': np.ndarray(5),
+                    'head': {'x': None, 'y': None, 'z': None, 'cf': 'head_default',
                         'worldx': None, 'worldy': None, 'worldz': None}}
 
     def markerHandler(self, image:np.ndarray):
