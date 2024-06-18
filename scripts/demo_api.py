@@ -346,6 +346,24 @@ class SingleImageAlphaPose():
         self.cy = None
         self.fx = None
         self.fy = None
+        self.pridescale = {
+            1: (255, 0, 0),        # Red
+            2: (255, 85, 0),       # Reddish Orange
+            3: (255, 170, 0),      # Orange
+            4: (255, 255, 0),      # Yellowish Orange
+            5: (170, 255, 0),      # Yellow
+            6: (85, 255, 0),       # Yellowish Green
+            7: (0, 255, 0),        # Green
+            8: (0, 255, 85),       # Greenish Cyan
+            9: (0, 255, 170),      # Cyan
+            10: (0, 255, 255),     # Bluish Cyan
+            11: (0, 170, 255),     # Blue
+            12: (0, 85, 255),      # Blueish Purple
+            13: (0, 0, 255),       # Purple
+            14: (85, 0, 255),      # Purpleish Magenta
+            15: (170, 0, 255),     # Magenta
+            16: (255, 0, 255),     # Reddish Magenta
+            17: (255, 0, 170)}
         rospy.Service(self.poseNode, SetBool, self.enablePose_CB)
         rospy.Service(self.camPoseNode, SetBool, self.enableCamPose_CB)
         rospy.Service(self.camSelectPanda, SetBool, self.selectPandaCB)
@@ -378,7 +396,6 @@ class SingleImageAlphaPose():
 ####################################################################################
 
     def pose_CB(self, input):
-        starttime = time.time()
         if self.enablePose and self.camSel:
             self.img_POSE = CvBridge().imgmsg_to_cv2(input, desired_encoding='rgb8')
             #self.img_POSE = cv2.cvtColor(CvBridge().imgmsg_to_cv2(input), cv2.COLOR_BGR2RGB)
@@ -392,54 +409,37 @@ class SingleImageAlphaPose():
             if self.pose != None:
                 self.keypoints = self.pose['result'][0]['keypoints']
                 self.scores = self.pose['result'][0]['kp_score']
-                #print(f"{Fore.LIGHTBLUE_EX}Scores: {self.scores}")
-                #print(f"Sec: {self.secs} | Nsec: {self.nsecs}"
-                jIgnore = ['waist', 'torso', 'body']
-                tagIgnore = ['roll', 'pitch', 'yaw']
+
                 i = 0
                 for key, joint in self.body.items():
-                    keySegs = key.split('_')
-                    
-                    #print(ending)
-                    if keySegs[0] not in jIgnore:
-                        #print(f"{Fore.LIGHTGREEN_EX}Combos: {key}\n{Fore.BLACK}{self.keypoints[16-i]}")
-                        if keySegs[-1] not in tagIgnore and key != 'head':
-                            joint['x'] = int(self.keypoints[16-i][0])
-                            joint['y'] = int(self.keypoints[16-i][1])
-                            joint['score'] = self.scores[16-i]
-                            i+=1
-                            #print(f"{Fore.GREEN}Key: {key}\n index: {16-i}\nValues: x={joint['x']} | y={joint['y']} | sc={joint['score']}")
-                        elif key == 'head':
-                            joint['x'] = int(self.keypoints[0][0])
-                            joint['y'] = int(self.keypoints[0][1])
-                            joint['score'] = self.scores[0]
-                            i+=1
-                            #print(f"{Fore.RED}Key: {key}\n index: {16-i}\nValues: x={joint['x']} | y={joint['y']} | sc={joint['score']}")
-                    
-
-                if self.args.circles == True:
-                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.vis_POSE = cv2.circle(self.vis_POSE, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
                 
-                #print(f"{Fore.GREEN}{self.vis_POSE}")
+                    if key != 'head':
+                        joint['x'] = int(self.keypoints[16-i][0])
+                        joint['y'] = int(self.keypoints[16-i][1])
+                        joint['score'] = self.scores[16-i]
+                        i+=1
+
+                    elif key == 'head':
+                        joint['x'] = int(self.keypoints[0][0])
+                        joint['y'] = int(self.keypoints[0][1])
+                        joint['score'] = self.scores[0]
+                        i+=1
+
+                    print(f"{Fore.YELLOW}Score: {joint['score']}")
+
+                    self.vis_POSE= cv2.putText(self.vis_POSE, f'{joint["score"].item():.2f}', (joint['x'] + 10, joint['y']), cv2.FONT_HERSHEY_SIMPLEX, 0.5, self.pridescale[i], 2)
+                    
             else:
                 print(f"{Fore.RED} No pose detected...")
                 
             if self.enableCamPose == True and self.colorTopic == '/realsense_top/color/image_raw':
                 self.vis_POSE = self.markerHandler(image=self.vis_POSE)
-            #self.markerPub()
-            #self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
-            #self.pub_POSE.publish(self.out_POSE)a
-            endtime = starttime-time.time()
-            print(f"{Fore.LIGHTMAGENTA_EX}pose time: {endtime}")
             self.out_POSE = CvBridge().cv2_to_imgmsg(self.vis_POSE, encoding = 'rgb8')
             self.pub_POSE.publish(self.out_POSE)
 
             
 
     def depth_CB(self, input):
-        starttime = time.time()
-        
         if self.enablePose and self.camSel:
             self.img_DEPTH = CvBridge().imgmsg_to_cv2(input, desired_encoding='16UC1')
             if self.img_DEPTH.shape[0] != self.IMAGE_HEIGHT:
@@ -449,26 +449,22 @@ class SingleImageAlphaPose():
                 self.img_blur_DEPTH = cv2.GaussianBlur(self.img_DEPTH, (5,5), cv2.BORDER_DEFAULT)
                 self.highRes = False
             
-            #print(f"{Fore.YELLOW} {self.img_DEPTH}")
 
             if self.camPose != None and self.camSel == True:
                 self.SendTransform2tf(p=self.camPose,q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
-                #self.SendTransform2tf(p=[0, -1.9, 2.80],q=self.camRot, parent_frame="/world", child_frame=self.tfFrame)
                 
-                # q=self.camRot,
                         
             if self.pose != None:
                 for key, joint in self.body.items():
-                    #print(key)
-                    if joint['y'] >= self.IMAGE_HEIGHT:
+                    print(f"{Fore.CYAN}KEY: {key} | Joint y: {joint['y']} | Height: {self.IMAGE_HEIGHT}")
+                    if joint['y'] != None and joint['y'] >= self.IMAGE_HEIGHT:
                         joint['z'] = self.img_blur_DEPTH[self.IMAGE_HEIGHT-1, int(joint['x'])]/1000
-                        #joint['z'] = self.img_blur_DEPTH[479, int(joint['x'])]
-                    elif joint['x'] >= self.IMAGE_WIDTH:
+
+                    elif joint['x'] != None and joint['x'] >= self.IMAGE_WIDTH:
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), self.IMAGE_WIDTH-1]/1000
+
                     else:
                         joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]/1000
-                        #joint['z'] = self.img_blur_DEPTH[int(joint['y']), int(joint['x'])]
-                    #print('Joint z: ', joint['z'])
                     
                     
                     joint['qx'] = np.roll(joint['qx'], -1)
@@ -481,30 +477,12 @@ class SingleImageAlphaPose():
                             
                     joint['qz'] = np.roll(joint['qz'], -1)
                     np.put(joint['qz'], 4, joint['z'])
-                    
 
-
-                print(f"{Fore.CYAN}LEFT:\nDEPTH: {self.body['L_wrist']['z']} | LOCATION: {self.body['L_wrist']['x'], self.body['L_wrist']['y']}")
-                print(f"{Fore.MAGENTA}RIGHT:\nDEPTH: {self.body['R_wrist']['z']} | LOCATION: {self.body['R_wrist']['x'], self.body['R_wrist']['y']}")
-
-                self.maxdepth_loc, self.mindepth_loc = np.unravel_index(np.argmax(self.img_blur_DEPTH),self.img_blur_DEPTH.shape), np.unravel_index(np.argmin(self.img_blur_DEPTH), self.img_blur_DEPTH.shape)
-
-
-                self.rounddepth_L = str(self.body['L_wrist']['z'])[:4]
-                self.rounddepth_R = str(self.body['L_wrist']['z'])[:4]
-
-                print(f"{Fore.GREEN} Max depth: {self.maxdepth_loc} {Fore.RED} | Min depth: {self.mindepth_loc}")
-                #print(f"{Fore.LIGHTYELLOW_EX} RAW left: {self.img_blur_DEPTH[self.body['L_wrist']['x'], self.body['L_wrist']['y']]} | RAW right: {self.img_blur_DEPTH[self.body['R_wrist']['x'], self.body['R_wrist']['y']]}")
-                
-                for key, joint in self.body.items():
                     jointx = self.GetMoveAvg(joint['qx'])        
                     jointy = self.GetMoveAvg(joint['qy'])
                     jointz = self.GetMoveAvg(joint['qz'])
                    
-                    #jointxyz = self.uv_to_XY(jointx, jointy, jointz)
                     jointxyz = self.uv_to_XY(jointx, jointy, jointz)
-
-                    
 
                     if joint['cf'] != None and joint['score'] > self.PUB_THRESHOLD:
                         self.SendTransform2tf(p=jointxyz, parent_frame=self.tfFrame, child_frame=(joint['cf']+'/rs'))
@@ -523,13 +501,6 @@ class SingleImageAlphaPose():
                             joint['worldy'] = -worldPos.y
                             joint['worldz'] = -worldPos.z
 
-                if self.args.circles == True:
-                    
-                    self.circle_DEPTH = cv2.circle(self.img_blur_DEPTH, (self.body['L_wrist']['x'], self.body['L_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-                    self.circle_DEPTH = cv2.circle(self.circle_DEPTH, (self.body['R_wrist']['x'], self.body['R_wrist']['y']), radius=10, color=(255, 0, 255), thickness=2)
-            
-            stoptime = time.time() 
-            print(f"{Fore.LIGHTBLUE_EX}pose time: {stoptime}")
             self.markerPub()
             if self.colorTopic == '/realsense_top/color/image_raw':
                 self.visMarker()
