@@ -576,6 +576,7 @@ class SingleImageAlphaPose():
         self.pub_DEPTH = rospy.Publisher("/alphapose_depth", Image, queue_size=1)
         self.pub_MARKER = rospy.Publisher("/reconcell/markers", MarkerArray, queue_size=1)
         self.pub_NI = rospy.Publisher("/panda_1/dmp_speed", Float32, queue_size= 1)
+        self.pub_PROX = rospy.Publisher("/panda_1/proximity", Float32, queue_size= 1)
 
     def dictInit(self):
         margin = 0.01
@@ -782,11 +783,11 @@ class SingleImageAlphaPose():
             print(f"{Fore.YELLOW}Frame {parentFrame} or {childFrame} doesn't exist!")
         else:
             self.proximity = math.sqrt((self.trans.x)**2+(self.trans.y)**2+(self.trans.z)**2)
-            if self.proximity <= 1 > 0.25:
+            if 0.5 < self.proximity <= 1:
                 oldrange = 1-0
                 newrange = 0-1 #0-100
                 ni = -(self.proximity*newrange)/oldrange
-            elif self.proximity <= 0.3:
+            elif self.proximity <= 0.5:
                 ni = 0
             else: 
                 ni = 1
@@ -794,6 +795,7 @@ class SingleImageAlphaPose():
             print(f"{Fore.LIGHTCYAN_EX}Proximity: {self.proximity} | NI: {ni}")
 
             self.pub_NI.publish(ni)
+            self.pub_PROX.publish(self.proximity)
             #self.pub_PANDA_PROX_2.publish(P2ProxMsg)
                 
 
@@ -875,8 +877,11 @@ class SingleImageAlphaPose():
         self.camera_fy = caminfo.K[4]
         self.camera_cy = caminfo.K[5]
 
-        self.camMat = np.array([[self.camera_fx, 0.0, self.camera_cx],
-                                    [0.0, self.camera_fy, self.camera_cy],
+        # self.camMat = np.array([[self.camera_fx, 0.0, self.camera_cx],
+                                    # [0.0, self.camera_fy, self.camera_cy],
+                                    # [0.0, 0.0, 1.0]],dtype=np.float32)
+        self.camMat = np.array([[433.505, -0.0550547, 641.864],
+                                    [0.0, 420.845, 358.457],
                                     [0.0, 0.0, 1.0]],dtype=np.float32)
         print(f"{Fore.CYAN}Camera info: {self.camMat}")
         
